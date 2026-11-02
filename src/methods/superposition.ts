@@ -8,6 +8,7 @@ import { killSources, toNetlist } from '../solver/netlist';
 import { simplificationStep, targetResistors } from './common';
 import { solveAny, type Values } from './engine';
 import { nodalSteps } from './nodal';
+import { singleSourceSteps } from './reduction';
 import { texElement, texOf, texQty } from './tex';
 import type { MethodAnswer, MethodResult, Step } from './types';
 
@@ -27,7 +28,7 @@ export function solveSuperposition(p: Problem): MethodResult {
   if (targets.length === 0) return { ok: false, reason: 'Nincs olyan kérdéses ellenállás, amelynek áramát összegezni lehetne.' };
   const els = new Map(allElements(p.circuit).map((e) => [e.id, e]));
 
-  const partials: { source: string; values: Values; derivation: Step[] }[] = [];
+  const partials: { source: string; values: Values; derivation: Step[]; dividers: boolean }[] = [];
   for (const s of sources) {
     const k = killSources(net, [s.id]);
     // A kiiktatott feszültségforrás összevonja a csomópontokat: a levezetés kiemeléseit
@@ -36,10 +37,17 @@ export function solveSuperposition(p: Problem): MethodResult {
     for (const [orig, nw] of k.nodeMap) if (!back.has(nw)) back.set(nw, orig);
     const others = sources.filter((x) => x.id !== s.id);
     const marks = others.map((x) => ({ element: x.id, as: x.kind === 'V' ? ('short' as const) : ('open' as const) }));
-    const d = nodalSteps(k.net, { toDrawing: (n) => back.get(n) ?? n, base: { killed: marks }, group: `Csak ${s.id} működik` });
+    const group = `Csak ${s.id} működik`;
+    // Elsősorban eredővel és osztókkal; csak ha a részáramkör nem soros-párhuzamos, akkor csomóponti módszerrel.
+    const r = singleSourceSteps(k.net, targets, { group, base: { killed: marks } });
+    if (r) {
+      partials.push({ source: s.id, values: r.values, derivation: r.steps, dividers: true });
+      continue;
+    }
+    const d = nodalSteps(k.net, { toDrawing: (n) => back.get(n) ?? n, base: { killed: marks }, group });
     const values = d?.values ?? solveAny(k.net);
     if (!values) return { ok: false, reason: 'Egy részáramkör nem oldható meg.' };
-    partials.push({ source: s.id, values, derivation: d?.steps ?? [] });
+    partials.push({ source: s.id, values, derivation: d?.steps ?? [], dividers: false });
   }
 
   const steps: Step[] = [];
@@ -63,14 +71,18 @@ export function solveSuperposition(p: Problem): MethodResult {
         `A(z) ${part.source} (${valueLabel(src)}) marad. ` +
         (shorts.length ? `${shorts.join(', ')} helyére rövidzár, ` : '') +
         (opens.length ? `${opens.join(', ')} helyére szakadás kerül. ` : '') +
-        'Az így kapott egyforrású részáramkört csomóponti módszerrel oldjuk meg.',
+        (part.dividers
+          ? 'Az így kapott egyforrású részáramkört úgy oldjuk meg, mint egy egyszerű hálózatot: eredő ellenállás a forrás felől, aztán feszültség- és áramosztással jutunk el a kérdéses ellenállásig.'
+          : 'Ez a részáramkör nem bontható soros és párhuzamos részekre (nem kiegyenlített híd), ezért itt kivételesen csomóponti módszerrel számolunk.'),
       highlight: { elements: [part.source], killed },
       group,
     });
     steps.push(...part.derivation);
     steps.push({
       title: 'Részeredmény',
-      text: 'A kérdéses ellenállás árama ebben a részáramkörben (a végpontjai potenciáljából, Ohm törvényével):',
+      text: part.dividers
+        ? 'A kérdéses ellenállás árama ebben a részáramkörben, a referenciairány szerinti előjellel (ha a részáram a nyíllal szemben folyik, negatív):'
+        : 'A kérdéses ellenállás árama ebben a részáramkörben (a végpontjai potenciáljából, Ohm törvényével):',
       terms: targets.map((t, i) => `${sym('I', t, k)} = ${texQty(part.values.get(t)?.I ?? 0, 'A')}${i < targets.length - 1 ? ',\\quad' : ''}`),
       highlight: { elements: [part.source, ...targets], killed, arrows: targets.map((t) => ({ element: t, kind: 'I' as const, value: part.values.get(t)?.I ?? 0 })) },
       group,
@@ -114,4 +126,12 @@ export function solveSuperposition(p: Problem): MethodResult {
     if (raw !== undefined) answers.push({ questionId: q.id, value: q.magnitudeOnly ? Math.abs(raw) : raw });
   }
   return { ok: true, solution: { method: 'szuperpozicio', title: 'Szuperpozíció', steps, answers, values } };
+}
+
+/** Minden részáramkör megoldható-e csak eredővel és osztókkal (csomóponti módszer nélkül). */
+export function superpositionByDividers(p: Problem): boolean {
+  const net = toNetlist(p.circuit).net;
+  const sources = net.elements.filter((e) => e.kind !== 'R');
+  if (sources.length < 2) return false;
+  return sources.every((s) => singleSourceSteps(killSources(net, [s.id]).net, [], {}) !== null);
 }

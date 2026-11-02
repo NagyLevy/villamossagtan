@@ -4,8 +4,10 @@ import { BASE_POINTS, formatCompact, formatMult, hypeMultiplier, penalty, taskPo
 import { TASK_MULT, fullScore, type Step } from '../daily/achievements';
 import { addFriend, decodeScore, encodeScore, type League } from '../daily/share';
 import { DAILY_LEVELS, dailyChallenge, dayKey, daysUntilZh, msUntilNext } from '../daily/schedule';
-import { generateProblem, tooManySourcesInMesh } from '../generator/generate';
+import { tooManySourcesInMesh } from '../generator/generate';
 import { solveWith } from '../methods';
+import { dailyProblem } from '../daily/problem';
+import { superpositionByDividers } from '../methods/superposition';
 
 const day = (s: string) => {
   const [y, m, d] = s.split('-').map(Number) as [number, number, number];
@@ -47,8 +49,10 @@ describe('napi kihívás: 14 nap × 4 nehézség, minden feladat megoldható a k
       const date = new Date(2026, 10, 2 + i, 12);
       for (const lvl of DAILY_LEVELS) {
         for (const t of dailyChallenge(date, lvl.id).tasks) {
-          const p = generateProblem({ seed: t.seed, topic: t.topic, level: t.level, zhType: t.zhType });
+          const p = dailyProblem(t);
           expect(tooManySourcesInMesh(p.circuit)).toBe(false);
+          // Szuperpozíciónál minden részáramkör csak eredővel és osztókkal megoldható (nincs csomóponti módszer).
+          if (t.method === 'szuperpozicio') expect(superpositionByDividers(p), `${t.id}: részáramkör osztókkal nem oldható meg`).toBe(true);
           const r = solveWith(p, t.method);
           if (!r.ok) throw new Error(`${dayKey(date)} ${lvl.id} ${t.id}: ${r.reason}`);
           expect(r.solution.answers.length, `${t.id}: a módszer nem válaszol`).toBeGreaterThan(0);

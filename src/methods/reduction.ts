@@ -497,3 +497,106 @@ function kclResidual(net: Netlist, values: Map<string, { U: number; I: number }>
   }
   return Math.max(0, ...sum.map(Math.abs));
 }
+
+/**
+ * Egyforrású (rész)hálózat megoldása csak eredővel és osztókkal (szuperpozíció részáramköreihez):
+ * eredő a forrás felől → a forrás árama / feszültsége → feszültség- és áramosztás a kérdéses
+ * ellenállásokig. null, ha a hálózat nem soros-párhuzamos. A lépések a megadott fejezetbe és
+ * kiemeléssel (pl. kiiktatott források) kerülnek.
+ */
+export function singleSourceSteps(
+  net: Netlist,
+  targets: string[],
+  ctx: { group?: string; base?: Partial<Step['highlight']> },
+): { steps: Step[]; values: Map<string, { U: number; I: number }> } | null {
+  const sources = net.elements.filter((e) => e.kind !== 'R');
+  if (sources.length !== 1) return null;
+  const s = sources[0]!;
+  const t1 = s.b;
+  const t2 = s.a;
+  const steps: Step[] = [];
+  // A rövidzárral áthidalt ellenállás (két vége ugyanaz a csomópont) árammentes.
+  const shorted = net.elements.filter((e) => e.kind === 'R' && e.a === e.b).map((e) => e.id);
+  if (shorted.length)
+    steps.push({
+      title: 'Rövidre zárt ellenállás',
+      text: `${shorted.join(', ')} két végét a rövidzár összeköti, így nincs rajta feszültség, és áram sem folyik rajta. Kihagyjuk.`,
+      highlight: { dim: shorted, elements: shorted },
+    });
+  let resistors = net.elements.filter((e) => e.kind === 'R' && e.a !== e.b);
+  let red = reduceSP(resistors, t1, t2);
+  if (!red) {
+    const zero = zeroCurrentResistors(net, t1, t2);
+    if (zero.length) {
+      resistors = resistors.filter((e) => !zero.includes(e.id));
+      red = reduceSP(resistors, t1, t2);
+      if (red)
+        steps.push({
+          title: 'Kiegyenlített híd',
+          text: `A híd kiegyenlített: az átló két végpontja azonos potenciálon van, ezért ${zero.join(', ')} árama nulla. Az elem elhagyható.`,
+          highlight: { dim: zero, elements: zero },
+        });
+    }
+  }
+  if (!red) return null;
+  const used = new Set(red.root.leaves);
+  const idle = resistors.filter((e) => !used.has(e.id)).map((e) => e.id);
+  if (idle.length)
+    steps.push({
+      title: 'Árammentes ágak',
+      text: `${idle.join(', ')} csak egyik végével csatlakozik az áramkörhöz (a szakadás miatt), így nem folyik rajta áram.`,
+      highlight: { dim: idle, elements: idle },
+    });
+
+  steps.push(...reductionSteps(red));
+  const root = red.root;
+  steps.push({
+    title: 'Eredő ellenállás',
+    text: 'A működő forrás felől nézett eredő ellenállás.',
+    terms: [`R_{e} = ${rSym(root)}`],
+    result: { symbol: 'R_{e}', value: root.R, unit: 'Ω' },
+    highlight: { groups: [groupOf(root, 'result')] },
+  });
+  const sameDir = root.a === s.b;
+  let Uroot: number;
+  if (s.kind === 'V') {
+    Uroot = sameDir ? s.value : -s.value;
+    steps.push({
+      title: 'A forrás árama',
+      text: 'Ohm törvénye az eredőre: a forrás feszültsége az eredő ellenálláson esik.',
+      terms: ['I = \\frac{U_g}{R_e}'],
+      subst: `I = \\frac{${texQty(s.value, 'V')}}{${texQty(root.R, 'Ω')}}`,
+      result: { symbol: 'I', value: s.value / root.R, unit: 'A' },
+      highlight: { elements: [s.id], groups: [groupOf(root, 'result')] },
+    });
+  } else {
+    const U = s.value * root.R;
+    Uroot = sameDir ? U : -U;
+    steps.push({
+      title: 'A forrás feszültsége',
+      text: 'Az áramforrás árama az eredő ellenálláson folyik át; a rajta eső feszültség Ohm törvényéből adódik.',
+      terms: ['U = I_g \\cdot R_e'],
+      subst: `U = ${texQty(s.value, 'A')} \\cdot ${texQty(root.R, 'Ω')}`,
+      result: { symbol: 'U', value: U, unit: 'V' },
+      highlight: { elements: [s.id], groups: [groupOf(root, 'result')] },
+    });
+  }
+  const values = distribute(root, Uroot);
+  const leafValues = new Map<string, { U: number; I: number }>();
+  for (const [e, v] of values) if (e.kind === 'leaf') leafValues.set(e.key, v);
+  for (const e of net.elements) if (e.kind === 'R' && !leafValues.has(e.id)) leafValues.set(e.id, { U: 0, I: 0 });
+  const shown = new Set<Edge>();
+  for (const t of targets) {
+    const path = findPath(root, t);
+    for (let i = 0; i + 1 < path.length; i++) {
+      const child = path[i + 1]!;
+      if (shown.has(child)) continue;
+      shown.add(child);
+      steps.push(dividerStep(path[i]!, child, values));
+    }
+  }
+  return {
+    steps: steps.map((st) => ({ ...st, group: ctx.group, highlight: { ...ctx.base, ...st.highlight } })),
+    values: leafValues,
+  };
+}

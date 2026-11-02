@@ -25,6 +25,7 @@ import { loadProgress, openTask, recordEvent, type TaskEvent } from '../daily/pr
 import { PAR_MINUTES } from '../daily/score';
 import { MIN_SOLVE_MS } from '../daily/share';
 import { dailyBanner } from './daily';
+import { dailyProblem } from '../daily/problem';
 import type { Account } from '../online/league';
 import { button, iconButton, segmented, select, slider, stepBar, toast, toggle, type SegmentOption } from './components';
 import { h, icon, ICONS } from './dom';
@@ -206,6 +207,8 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
   // ───────── Napi kihívás ─────────
 
   let dailyIndex = 0;
+  /** Melyik napi feladat van betöltve (nap|fokozat|feladat), vagy null szabad gyakorlásnál. */
+  let dailyLoaded: string | null = null;
   let dailyDay = dayKey(new Date());
   const banner = dailyBanner(
     settings.dailyLevel,
@@ -263,7 +266,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     if (!settings.dailyActive || !problem) return null;
     const c = dailyChallenge(new Date(), settings.dailyLevel);
     const t = c.tasks[Math.min(dailyIndex, c.tasks.length - 1)]!;
-    return problem.seed === t.seed ? { c, t } : null;
+    return dailyLoaded === `${c.day}|${settings.dailyLevel}|${t.id}` ? { c, t } : null;
   };
   /** Versenyesemény a napi feladaton (rossz válasz, tipp, trükk-tipp, teljes megoldás). */
   const dailyEvent = (ev: TaskEvent) => {
@@ -929,8 +932,9 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
         const c = dailyChallenge(new Date(), settings.dailyLevel);
         dailyIndex = Math.min(dailyIndex, c.tasks.length - 1);
         const t = c.tasks[dailyIndex]!;
-        seed = t.seed;
-        problem = generateProblem({ seed: t.seed, topic: t.topic, level: t.level, zhType: t.zhType });
+        problem = dailyProblem(t);
+        seed = problem.seed;
+        dailyLoaded = `${c.day}|${settings.dailyLevel}|${t.id}`;
         // Napi módban csak az a kérdés marad, amire a nap módszere választ ad.
         const r = solveWith(problem, t.method);
         if (r.ok) {
@@ -944,6 +948,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
         }
         banner.render(c, dailyIndex);
       } else {
+        dailyLoaded = null;
         problem = generateProblem({ seed, topic: settings.topic, level: settings.level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode });
       }
     } catch (e) {
