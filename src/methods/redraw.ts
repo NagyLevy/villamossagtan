@@ -27,8 +27,6 @@ function prune(c: Circuit): void {
       changed = true;
     }
   }
-  const used = new Set(c.branches.flatMap((b) => [b.from, b.to]));
-  c.points = c.points.filter((p) => used.has(p.id) || keep.has(p.id));
 }
 
 /** Az összevonások utáni rajzok (red.order sorrendjében) és az eredőt képviselő elem azonosítója. */

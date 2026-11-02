@@ -309,6 +309,11 @@ export function focusBox(ctx: OverlayContext, h: Highlight): Box | null {
   const ids = [...(h.elements ?? []), ...(h.groups ?? []).flatMap((g) => g.elements), ...(h.arrows ?? []).map((a) => a.element)];
   const gb = groupBox(ctx, ids, 0);
   if (gb) boxes.push(gb);
+  // A kiemelt elemek felirata is a képen maradjon (pl. a hosszú "Re2 = 3,158 Ω").
+  for (const id of ids) {
+    const lb = ctx.layout.elements.find((e) => e.el.id === id)?.label.box;
+    if (lb) boxes.push(lb);
+  }
   for (const l of h.loops ?? []) {
     const g = loopGeometry(ctx, l);
     if (g) for (const s of g.segments) boxes.push({ x1: Math.min(s.a.x, s.b.x), y1: Math.min(s.a.y, s.b.y), x2: Math.max(s.a.x, s.b.x), y2: Math.max(s.a.y, s.b.y) });

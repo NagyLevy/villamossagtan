@@ -75,6 +75,8 @@ export interface Problem {
   stats: { meshes: number; resistors: number; sources: number };
   /** Hányadik próbálkozásra sikerült érvényes feladatot találni. */
   attempts: number;
+  /** Csillag-delta bekapcsolva készült (a megoldás használhat átalakítást, pl. szuperpozíció részáramkörében). */
+  starDelta?: boolean;
 }
 
 interface Draft {
@@ -151,6 +153,7 @@ export function generateProblem(options: GenerateOptions): Problem {
       questions,
       stats: { meshes: meshCount(map.net), resistors: els.filter((e) => e.kind === 'R').length, sources: els.filter((e) => e.kind !== 'R').length },
       attempts: attempt,
+      starDelta,
     };
   }
   throw new Error(`Nem sikerült érvényes feladatot generálni (${topic}, ${level}, seed: ${options.seed}).`);

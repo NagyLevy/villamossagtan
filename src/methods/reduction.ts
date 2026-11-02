@@ -12,6 +12,7 @@ import { toNetlist } from '../solver/netlist';
 import { formatQuantity, type Unit } from '../units';
 import { texElement, texNum, texOf, texQty } from './tex';
 import { redrawSequence } from './redraw';
+import { transformAndReduce } from './stardelta';
 import type { GroupRef, Highlight, MethodResult, Step, TableRow } from './types';
 
 /** Egy (eredeti vagy összevont) kétpólus a redukció közben. */
@@ -256,8 +257,8 @@ export function reductionSteps(red: Reduction, base?: Circuit, extra: Highlight 
 }
 
 /** Az újrarajzolt áramkör kiemeléssel: az új eredő ellenállás (a felirata az elemen: "Re1 = 6 Ω"). */
-function redrawOf(d: { circuit: Circuit; keep: string }, _e: Edge, extra: Highlight): NonNullable<Step['redraw']> {
-  return { circuit: d.circuit, highlight: { ...extra, elements: [d.keep] } };
+function redrawOf(d: { circuit: Circuit; keep: string }, e: Edge, extra: Highlight): NonNullable<Step['redraw']> {
+  return { circuit: d.circuit, highlight: { ...extra, elements: [d.keep] }, kind: e.kind === 'parallel' ? 'parallel' : 'series' };
 }
 
 /** A teljes összevonás utáni rajz (egyetlen eredő): az eredő és a forrás lépéseihez. */
@@ -529,8 +530,17 @@ function kclResidual(net: Netlist, values: Map<string, { U: number; I: number }>
 export function singleSourceSteps(
   net: Netlist,
   targets: string[],
-  ctx: { group?: string; base?: Partial<Step['highlight']>; circuit?: Circuit },
-): { steps: Step[]; values: Map<string, { U: number; I: number }> } | null {
+  ctx: {
+    group?: string;
+    base?: Partial<Step['highlight']>;
+    circuit?: Circuit;
+    /** Csillag-delta átalakítás megengedett (ha a részáramkör hidas); a kérdéses elem nem lehet az átalakított csoportban. */
+    starDelta?: boolean;
+    prefer?: 'delta-csillag' | 'csillag-delta';
+    /** A csomópontok visszavezetése a rajzra (kiiktatott forrásoknál átszámozódnak). */
+    toDrawing?: (n: number) => number;
+  },
+): { steps: Step[]; values: Map<string, { U: number; I: number }>; transformed: boolean } | null {
   const sources = net.elements.filter((e) => e.kind !== 'R');
   if (sources.length !== 1) return null;
   const s = sources[0]!;
@@ -560,8 +570,22 @@ export function singleSourceSteps(
         });
     }
   }
+  // Hidas részáramkör: csillag-delta átalakítás, utána összevonás (csak ha megengedett).
+  let sd: ReturnType<typeof transformAndReduce> = null;
+  if (!red && ctx.starDelta) {
+    sd = transformAndReduce(resistors, net.nodeCount, t1, t2, {
+      prefer: ctx.prefer,
+      drawn: new Set(ctx.circuit ? allElements(ctx.circuit).map((e) => e.id) : net.elements.map((e) => e.id)),
+      from: 'A működő forrás',
+      group: ctx.group ?? 'Összevonás',
+      toDrawing: ctx.toDrawing,
+      base: ctx.base,
+    });
+    if (sd && targets.some((t) => sd!.removedIds.includes(t))) sd = null;
+    red = sd?.red ?? null;
+  }
   if (!red) return null;
-  const used = new Set(red.root.leaves);
+  const used = new Set([...red.root.leaves, ...(sd?.removedIds ?? [])]);
   const idle = resistors.filter((e) => !used.has(e.id)).map((e) => e.id);
   if (idle.length)
     steps.push({
@@ -570,9 +594,11 @@ export function singleSourceSteps(
       highlight: { dim: idle, elements: idle },
     });
 
-  steps.push(...reductionSteps(red, ctx.circuit, ctx.base));
+  const afterTransform = steps.length;
+  if (sd) steps.push(...sd.steps);
+  else steps.push(...reductionSteps(red, ctx.circuit, ctx.base));
   const root = red.root;
-  const fin = finalRedraw(ctx.circuit, red, ctx.base);
+  const fin = sd ? {} : finalRedraw(ctx.circuit, red, ctx.base);
   steps.push({
     title: 'Eredő ellenállás',
     ...fin,
@@ -621,7 +647,13 @@ export function singleSourceSteps(
     }
   }
   return {
-    steps: steps.map((st) => ({ ...st, group: ctx.group, highlight: { ...ctx.base, ...st.highlight } })),
+    steps: steps.map((st, i) => {
+      const h = { ...ctx.base, ...st.highlight };
+      // Átalakítás után az ábrán végig látszik az új csillag / delta (szaggatottan).
+      const hl = sd && i >= afterTransform + sd.steps.length ? sd.filterH({ ...sd.after, ...h, dim: [...(sd.after.dim ?? []), ...(h.dim ?? [])] }) : h;
+      return { ...st, group: st.group === 'Átalakítás' ? `${ctx.group ?? ''}: csillag-delta` : ctx.group, highlight: hl };
+    }),
     values: leafValues,
+    transformed: !!sd,
   };
 }

@@ -118,14 +118,14 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
   };
 
   /** Módszerfül: új feladat, amit ezzel a módszerrel a legkönnyebb megoldani. */
-  const switchToMethod = (m: MethodId) => {
+  const switchToMethod = (m: MethodId): boolean => {
     // A mostani témakörben csak akkor maradunk, ha az a módszerhez tartozik.
     const family = METHOD_FAMILY[m].includes(settings.topic) ? [settings.topic] : [];
     const found = findFor(m, [...new Set([...family, METHOD_TOPIC[m]])]);
     if (!found) {
       methodSeg.set(settings.method);
-      toast('Nem találtam ehhez a módszerhez illő feladatot ezen a szinten.');
-      return;
+      toast(settings.starDelta && m === 'szuperpozicio' ? 'Ezen a szinten nem találtam csillag-deltás szuperpozíciós feladatot (ZH-szinten túl nagyok a hálózatok egy átalakításhoz). Próbáld Közepes vagy Nehéz szinten!' : 'Nem találtam ehhez a módszerhez illő feladatot ezen a szinten.');
+      return false;
     }
     if (found.topic !== settings.topic) {
       update({ topic: found.topic });
@@ -136,6 +136,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     methodSeg.set(m);
     seed = found.seed;
     generate();
+    return true;
   };
 
   /** Vizsga mód (beadás után ellenőrzés): csak a napi kihíváson kívül. */
@@ -217,9 +218,15 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     syncLevel();
     // A napi kihívást a kapcsoló nem érinti (annak a feladatai mindenkinél ugyanazok).
     if (settings.dailyActive) return toast('A napi kihívás feladatai ettől nem változnak; a csillag-delta a szabad gyakorlásra vonatkozik.');
+    // Szuperpozíciónál a részáramkörök összevonásában kell az átalakítás: ehhez illő (új) feladat jön.
+    if (settings.method === 'szuperpozicio' && (settings.topic === 'tobbforras' || settings.topic === 'zh')) {
+      if (switchToMethod('szuperpozicio'))
+        toast(v ? 'Szuperpozíciós feladat, amelynek egyik részáramkörében híd van: ott csillag-delta átalakítás kell, utána eredő és osztók.' : 'Szuperpozíciós feladat csillag-delta nélkül: minden részáramkör eredővel és osztókkal megy.');
+      return;
+    }
     // Ugyanaz a feladat (ugyanaz a seed): bekapcsolva egy új ellenállás kerül bele, ami miatt átalakítás kell.
     if (v && settings.topic !== 'csillag-delta' && !STAR_DELTA_TOPICS.has(settings.topic)) {
-      toast('Ebben a témakörben nincs mit átalakítani. Csillag-delta az Eredő ellenállás, a Feszültség- és áramosztás, a Teljes hálózatanalízis és a Thevenin feladataiba kerül.');
+      toast('Ennél a feladatnál nincs mit átalakítani. Csillag-delta az Eredő ellenállás, a Feszültség- és áramosztás, a Teljes hálózatanalízis és a Thevenin feladataiba, valamint a Szuperpozíció részáramköreibe kerül.');
     }
     // Theveninnél az átalakítás az Rth része, ott marad a Thevenin-módszer.
     if (v && STAR_DELTA_TOPICS.has(settings.topic)) update({ method: settings.topic === 'thevenin' ? 'thevenin' : 'csillag-delta' });
@@ -437,12 +444,15 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
   const showCircuit = (c: Circuit, merged = false) => {
     if (c === shownCircuit) return;
     shownCircuit = c;
+    // Összeolvadás után a kamera onnan folytatja, ahol a régi rajzon állt (nem ugrik vissza).
+    const prevView = merged ? canvas.querySelector('svg')?.getAttribute('viewBox') : null;
     layout = computeLayout(c);
     overlayCtx = { circuit: c, layout, map: toNetlist(c) };
     canvas.innerHTML = renderCircuitSvg(c, { title: title.textContent ?? 'Áramkör' }, layout);
+    if (prevView) canvas.querySelector('svg')!.setAttribute('viewBox', prevView);
     flow.attach(canvas.querySelector('svg')!);
     canvas.classList.remove('swap');
-    // Összeolvadás után nincs áttűnés: a rajz a helyén marad, csak a megmaradt elem villan fel.
+    // Összeolvadás után nincs áttűnés: a rajz a helyén marad.
     if (merged) return;
     void canvas.offsetWidth;
     canvas.classList.add('swap');
@@ -455,26 +465,79 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
    * Összeolvadás: a régi rajzon az eltűnő ellenállások odacsúsznak a megmaradóhoz, összezsugorodnak
    * és elhalványulnak; utána jön az új rajz. true, ha az animáció elindult (a lépés később rajzolódik).
    */
-  const mergeInto = (next: Circuit, keep: string | undefined, then: () => void): boolean => {
+  const mergeInto = (next: Circuit, keep: string | undefined, kind: 'series' | 'parallel', then: () => void): boolean => {
     const svg = canvas.querySelector('svg');
-    if (!svg || !keep || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
+    if (!svg || !keep || !layout || !shownCircuit || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
     const keepG = svg.querySelector<SVGGElement>(`.el[data-id="${keep}"]`);
     const stay = new Set(allElements(next).map((e) => e.id));
     const gone = [...svg.querySelectorAll<SVGGElement>('.el')].filter((g) => !stay.has(g.dataset.id!));
     if (!keepG || gone.length === 0) return false;
+    const center = (b: DOMRect) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
     const kb = keepG.getBBox();
-    const kc = { x: kb.x + kb.width / 2, y: kb.y + kb.height / 2 };
+    const kc = center(kb);
+    const boxes = [kb, ...gone.map((g) => g.getBBox())];
+
+    // 1. A kamera rááll az összeolvadó ellenállásokra.
+    moveCamera(svg, {
+      x1: Math.min(...boxes.map((b) => b.x)),
+      y1: Math.min(...boxes.map((b) => b.y)),
+      x2: Math.max(...boxes.map((b) => b.x + b.width)),
+      y2: Math.max(...boxes.map((b) => b.y + b.height)),
+    });
     keepG.classList.add('merge-target');
-    for (const g of gone) {
-      const b = g.getBBox();
-      g.classList.add('merging');
-      g.style.transform = `translate(${kc.x - (b.x + b.width / 2)}px, ${kc.y - (b.y + b.height / 2)}px) scale(0.35)`;
-      g.style.opacity = '0';
+
+    // Az eltűnő ágak vezetéke külön rétegre kerül, hogy elhalványulhasson.
+    const nextBranches = new Set(next.branches.map((b) => b.id));
+    const removed = new Set(shownCircuit.branches.filter((b) => !nextBranches.has(b.id)).map((b) => b.id));
+    const segD = (keepIt: boolean) =>
+      layout!.wires
+        .filter((w) => removed.has(w.branchId) !== keepIt && (w.a.x !== w.b.x || w.a.y !== w.b.y))
+        .map((w) => `M${w.a.x} ${w.a.y}L${w.b.x} ${w.b.y}`)
+        .join('');
+    const wirePath = svg.querySelector('.wires .wire');
+    let fadingWire: SVGPathElement | null = null;
+    if (wirePath && removed.size) {
+      wirePath.setAttribute('d', segD(true));
+      fadingWire = wirePath.cloneNode() as SVGPathElement;
+      fadingWire.setAttribute('d', segD(false));
+      fadingWire.classList.add('merge-fade');
+      wirePath.after(fadingWire);
     }
+
+    // A művelet jele a két ellenállás között: soros +, párhuzamos × (replusz).
+    const gc = gone.map((g) => center(g.getBBox()));
+    const mid = { x: (kc.x + gc.reduce((a, p) => a + p.x, 0) / gc.length) / 2, y: (kc.y + gc.reduce((a, p) => a + p.y, 0) / gc.length) / 2 };
+    const op = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    op.setAttribute('class', 'merge-op');
+    op.setAttribute('x', String(mid.x));
+    op.setAttribute('y', String(mid.y));
+    op.setAttribute('text-anchor', 'middle');
+    op.setAttribute('dominant-baseline', 'central');
+    op.textContent = kind === 'parallel' ? '×' : '+';
+    svg.querySelector('.ov-over')?.append(op);
+
+    // 2. Kis szünet után (a kamera odaért, a jel megjelent) az összeolvadás.
     pendingMerge = window.setTimeout(() => {
-      pendingMerge = 0;
-      then();
-    }, 650);
+      op.classList.add('is-on');
+      pendingMerge = window.setTimeout(() => {
+        for (const g of gone) {
+          const branch = shownCircuit!.branches.find((b) => b.elements.some((e) => e.id === g.dataset.id));
+          g.classList.add('merging');
+          // Párhuzamos ág eltűnik: az ellenállás odacsúszik; soros (a helyén vezeték marad): csak elhalványul.
+          if (branch && removed.has(branch.id)) {
+            const c = center(g.getBBox());
+            g.style.transform = `translate(${kc.x - c.x}px, ${kc.y - c.y}px) scale(0.4)`;
+          }
+          g.style.opacity = '0';
+        }
+        if (fadingWire) fadingWire.style.opacity = '0';
+        op.classList.add('is-out');
+        pendingMerge = window.setTimeout(() => {
+          pendingMerge = 0;
+          then();
+        }, 700);
+      }, 450);
+    }, 550);
     return true;
   };
 
@@ -489,7 +552,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     if (rd && next && next !== shownCircuit && index > lastIndex) {
       const keep = rd.highlight.elements?.[0];
       lastIndex = index;
-      if (mergeInto(next, keep, () => drawStep(index, keep))) return;
+      if (mergeInto(next, keep, rd.kind ?? 'series', () => drawStep(index, keep))) return;
     }
     lastIndex = index;
     drawStep(index);
@@ -527,8 +590,6 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     if (shownCircuit && layout) flow.set(flowSegments(shownCircuit, layout, stateCurrents(shownCircuit, hl)));
     // Kamera: finoman ráközelít a lépés fókuszára.
     moveCamera(svg, focusBox(overlayCtx, hl));
-    // Az összeolvadásból megmaradt elem felvillan az új értékével.
-    if (popId) svg.querySelector(`.el[data-id="${popId}"]`)?.classList.add('merge-pop');
   };
 
   /** A nézet (viewBox) rugalmas animálása a fókusz köré; ha nincs fókusz, a teljes ábra. */

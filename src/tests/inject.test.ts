@@ -41,6 +41,23 @@ describe('csillag-delta kapcsoló', () => {
       }
   });
 
+  it('szuperpozíció: bekapcsolva van hidas részáramkörű feladat, kikapcsolva sosem kell átalakítás', () => {
+    let found = 0;
+    for (let i = 0; i < 60; i++) {
+      const p = generateProblem({ seed: `S${i}`, topic: 'tobbforras', level: 'nehez', starDelta: true, starDeltaMode: 'veletlen' });
+      const r = solveWith(p, 'szuperpozicio');
+      if (!r.ok || !r.solution.steps.some((s) => s.title === 'Miért kell átalakítás?')) continue;
+      found++;
+      for (const a of r.solution.answers) {
+        const q = p.questions.find((x) => x.id === a.questionId)!;
+        expect(Math.abs(a.value - q.answer)).toBeLessThanOrEqual(1e-9 * Math.max(1, Math.abs(q.answer)));
+      }
+      const off = solveWith(generateProblem({ seed: `S${i}`, topic: 'tobbforras', level: 'nehez' }), 'szuperpozicio');
+      expect(off.ok).toBe(false);
+    }
+    expect(found).toBeGreaterThan(0);
+  });
+
   it('kikapcsolva: nincs benne csillag-delta', () => {
     for (const topic of topics)
       for (const level of levels)

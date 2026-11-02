@@ -41,6 +41,12 @@ export function methodFit(m: MethodId, p: Problem, relaxed = false): Fit {
     case 'csillag-delta':
       return { ok: !usable.includes('redukcio'), why: 'Híd: átalakítás nélkül nem vonható össze.' };
     case 'szuperpozicio': {
+      // Csillag-deltával: valamelyik részáramkörben híd van (átalakítás, utána osztók).
+      if (p.starDelta) {
+        const r = solveWith(p, 'szuperpozicio');
+        const ok = sources >= 2 && r.ok && r.solution.steps.some((s) => s.title === 'Miért kell átalakítás?');
+        return { ok, why: 'Egy részáramkörben híd van: csillag-delta átalakítás kell, utána eredővel és osztókkal megy.' };
+      }
       if (sources < 2 || !superpositionByDividers(p)) return { ok: false, why: '' };
       const h = systemSize(solveWith(p, 'hurokaram'));
       const c = systemSize(solveWith(p, 'csomoponti'));

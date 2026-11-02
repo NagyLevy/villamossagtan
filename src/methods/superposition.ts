@@ -27,7 +27,7 @@ export function solveSuperposition(p: Problem): MethodResult {
   if (targets.length === 0) return { ok: false, reason: 'Nincs olyan kérdéses ellenállás, amelynek áramát összegezni lehetne.' };
   const els = new Map(allElements(p.circuit).map((e) => [e.id, e]));
 
-  const partials: { source: string; values: Values; derivation: Step[]; dividers: boolean }[] = [];
+  const partials: { source: string; values: Values; derivation: Step[]; dividers: boolean; transformed: boolean }[] = [];
   for (const s of sources) {
     const k = killSources(net, [s.id]);
     const others = sources.filter((x) => x.id !== s.id);
@@ -35,9 +35,12 @@ export function solveSuperposition(p: Problem): MethodResult {
     const group = `Csak ${s.id} működik`;
     // Csak eredővel, feszültség- és áramosztással (így tanuljuk); ha egy részáramkör nem bontható
     // soros-párhuzamos részekre, erre a feladatra a szuperpozíció nem való.
-    const r = singleSourceSteps(k.net, targets, { group, base: { killed: marks }, circuit: p.circuit });
+    // A kiiktatott feszültségforrás összevonja a csomópontokat: a kiemeléseket a rajz csomópontjaira vezetjük vissza.
+    const back = new Map<number, number>();
+    for (const [orig, nw] of k.nodeMap) if (!back.has(nw)) back.set(nw, orig);
+    const r = singleSourceSteps(k.net, targets, { group, base: { killed: marks }, circuit: p.circuit, starDelta: p.starDelta, toDrawing: (n) => back.get(n) ?? n });
     if (!r) return { ok: false, reason: `Csak ${s.id} működésekor a részáramkör nem bontható soros és párhuzamos részekre, így osztókkal nem oldható meg` };
-    partials.push({ source: s.id, values: r.values, derivation: r.steps, dividers: true });
+    partials.push({ source: s.id, values: r.values, derivation: r.steps, dividers: true, transformed: r.transformed });
   }
 
   const steps: Step[] = [];
@@ -61,7 +64,9 @@ export function solveSuperposition(p: Problem): MethodResult {
         `A(z) ${part.source} (${valueLabel(src)}) marad. ` +
         (shorts.length ? `${shorts.join(', ')} helyére rövidzár, ` : '') +
         (opens.length ? `${opens.join(', ')} helyére szakadás kerül. ` : '') +
-        (part.dividers
+        (part.transformed
+          ? 'Ez a részáramkör hidas: előbb csillag-delta átalakítással összevonhatóvá tesszük, aztán ugyanúgy megy, mint egy egyszerű hálózat: eredő ellenállás a forrás felől, majd feszültség- és áramosztás a kérdéses ellenállásig.'
+          : part.dividers
           ? 'Az így kapott egyforrású részáramkört úgy oldjuk meg, mint egy egyszerű hálózatot: eredő ellenállás a forrás felől, aztán feszültség- és áramosztással jutunk el a kérdéses ellenállásig.'
           : 'Ez a részáramkör nem bontható soros és párhuzamos részekre (nem kiegyenlített híd), ezért itt kivételesen csomóponti módszerrel számolunk.'),
       highlight: { elements: [part.source], killed },

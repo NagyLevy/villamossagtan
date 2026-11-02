@@ -2976,33 +2976,34 @@ html.lite .fx-value.is-final {
   filter: drop-shadow(0 0 8px var(--accent));
 }
 
-.canvas .el.merge-pop {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: merge-pop 700ms cubic-bezier(0.2, 1.4, 0.4, 1);
+.canvas .wire.merge-fade {
+  transition: opacity 600ms ease-in;
 }
 
-.canvas .el.merge-pop .label {
-  animation: merge-label 900ms ease-out;
+.canvas .merge-op {
+  font-size: 34px;
+  font-weight: 800;
+  fill: var(--accent);
+  paint-order: stroke;
+  stroke: var(--circuit-paper, var(--surface));
+  stroke-width: 6px;
+  opacity: 0;
+  transition: opacity 250ms ease-out;
 }
 
-@keyframes merge-pop {
-  0% { transform: scale(1); }
-  35% { transform: scale(1.35); filter: drop-shadow(0 0 14px var(--accent)); }
-  100% { transform: scale(1); }
+.canvas .merge-op.is-on {
+  opacity: 1;
 }
 
-@keyframes merge-label {
-  0% { opacity: 0; }
-  40% { opacity: 1; fill: var(--accent); }
-  100% { opacity: 1; }
+.canvas .merge-op.is-out {
+  opacity: 0;
+  transition: opacity 500ms ease-in 150ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .canvas .el.merging,
-  .canvas .el.merge-pop,
-  .canvas .el.merge-pop .label {
+  .canvas .wire.merge-fade,
+  .canvas .merge-op {
     transition: none;
-    animation: none;
   }
 }
