@@ -19,6 +19,7 @@ import { checkCell, tableTargets, verify, type CellKey, type TableTarget } from 
 import { trickHint } from '../simplify/hint';
 import { recordAttempt } from './stats';
 import { openStats } from './statsSheet';
+import { TROPHY_ICON, openLeaderboard } from './leaderboardView';
 import { dailyChallenge, dayKey } from '../daily/schedule';
 import { loadProgress, openTask, recordEvent, type TaskEvent } from '../daily/progress';
 import { PAR_MINUTES } from '../daily/score';
@@ -145,6 +146,8 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
   });
 
   const statsBtn = iconButton('Statisztika', ICONS.stats, () => openStats());
+  const leaderBtn = iconButton('Ranglista', TROPHY_ICON, () => openLeaderboard());
+  leaderBtn.classList.add('lb-btn');
 
   // ───────── Napi kihívás ─────────
 
@@ -250,7 +253,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
       'Villamosságtan',
     ),
     methodSeg.el,
-    h('div', { class: 'toolbar-group' }, dailyBtn, topicSel.el, levelSel.el, sdToggle.el, sdMode.el, statsBtn, themeBtn, accountEl),
+    h('div', { class: 'toolbar-group' }, dailyBtn, topicSel.el, levelSel.el, sdToggle.el, sdMode.el, leaderBtn, statsBtn, themeBtn, accountEl),
   );
 
   // ───────── Feladatfej ─────────
