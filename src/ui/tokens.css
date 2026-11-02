@@ -1,0 +1,127 @@
+/* Dizájntokenek. Világos alap, sötét mód a rendszer szerint vagy kézzel (data-theme). */
+
+:root {
+  color-scheme: light;
+  --bg: #f5f5f7; /* Papír */
+  --surface: #ffffff;
+  --surface-2: #fbfbfd;
+  --ink: #1d1d1f; /* Tinta */
+  --ink-2: #6e6e73;
+  --label: #3a3a3c;
+  --hair: rgba(0, 0, 0, 0.06);
+  --hair-2: rgba(0, 0, 0, 0.12);
+  --fill: rgba(118, 118, 128, 0.12);
+  --fill-2: rgba(118, 118, 128, 0.2);
+  --glass: rgba(255, 255, 255, 0.72);
+  --seg-on: #ffffff;
+  --seg-on-ink: #1d1d1f;
+
+  --accent: #0071e3; /* Áramkék */
+  --accent-press: #0062c4;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(0, 113, 227, 0.1);
+  --focus-ring: 0 0 0 4px rgba(0, 113, 227, 0.35);
+
+  --loop: #5856d6;
+  --loop-soft: rgba(88, 86, 214, 0.07);
+  --loop-line: rgba(88, 86, 214, 0.18);
+  --node: #c93400;
+  --result: #248a3d;
+  --transform: #af52de;
+  --danger: #d70015;
+  --toggle-on: #34c759;
+
+  --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.03), 0 8px 24px rgba(0, 0, 0, 0.05), 0 24px 64px rgba(0, 0, 0, 0.05);
+  --shadow-float: 0 2px 6px rgba(0, 0, 0, 0.05), 0 18px 48px rgba(0, 0, 0, 0.12);
+  --shadow-thumb: 0 1px 2px rgba(0, 0, 0, 0.08), 0 3px 8px rgba(0, 0, 0, 0.06);
+  --shadow-knob: 0 2px 6px rgba(0, 0, 0, 0.18);
+
+  --r-xl: 20px;
+  --r-lg: 16px;
+  --r-md: 12px;
+  --r-sm: 9px;
+
+  --font: -apple-system, 'SF Pro Text', 'SF Pro Display', Inter, system-ui, sans-serif;
+  --font-display: -apple-system, 'SF Pro Display', Inter, system-ui, sans-serif;
+
+  /* Rugós görbék: enyhe túllendüléssel / természetes lassulással. */
+  --spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 200ms;
+  --t-med: 300ms;
+  --t-slow: 400ms;
+
+  /* Az áramkör színei (az SVG ezeket olvassa). */
+  --circuit-ink: var(--ink);
+  --circuit-paper: var(--surface);
+  --circuit-label: var(--label);
+  --circuit-accent: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #1c1c1e; /* Grafit */
+    --surface: #2c2c2e;
+    --surface-2: #1c1c1e;
+    --ink: #f5f5f7;
+    --ink-2: #a1a1a6;
+    --label: #d1d1d6;
+    --hair: rgba(255, 255, 255, 0.08);
+    --hair-2: rgba(255, 255, 255, 0.14);
+    --fill: rgba(118, 118, 128, 0.24);
+    --fill-2: rgba(118, 118, 128, 0.32);
+    --glass: rgba(44, 44, 46, 0.72);
+    --seg-on: #636366;
+    --seg-on-ink: #ffffff;
+    --accent: #2997ff;
+    --accent-press: #0a84ff;
+    --accent-soft: rgba(41, 151, 255, 0.16);
+    --focus-ring: 0 0 0 4px rgba(41, 151, 255, 0.45);
+    --loop: #7d7aff;
+    --loop-soft: rgba(125, 122, 255, 0.12);
+    --loop-line: rgba(125, 122, 255, 0.3);
+    --node: #ff9f0a;
+    --result: #30d158;
+    --transform: #bf5af2;
+    --danger: #ff453a;
+    --toggle-on: #30d158;
+    --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.25), 0 24px 64px rgba(0, 0, 0, 0.3);
+    --shadow-float: 0 2px 6px rgba(0, 0, 0, 0.3), 0 18px 48px rgba(0, 0, 0, 0.5);
+    --shadow-thumb: 0 1px 2px rgba(0, 0, 0, 0.3), 0 3px 8px rgba(0, 0, 0, 0.2);
+    --shadow-knob: 0 2px 6px rgba(0, 0, 0, 0.4);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #1c1c1e;
+  --surface: #2c2c2e;
+  --surface-2: #1c1c1e;
+  --ink: #f5f5f7;
+  --ink-2: #a1a1a6;
+  --label: #d1d1d6;
+  --hair: rgba(255, 255, 255, 0.08);
+  --hair-2: rgba(255, 255, 255, 0.14);
+  --fill: rgba(118, 118, 128, 0.24);
+  --fill-2: rgba(118, 118, 128, 0.32);
+  --glass: rgba(44, 44, 46, 0.72);
+  --seg-on: #636366;
+  --seg-on-ink: #ffffff;
+  --accent: #2997ff;
+  --accent-press: #0a84ff;
+  --accent-soft: rgba(41, 151, 255, 0.16);
+  --focus-ring: 0 0 0 4px rgba(41, 151, 255, 0.45);
+  --loop: #7d7aff;
+  --loop-soft: rgba(125, 122, 255, 0.12);
+  --loop-line: rgba(125, 122, 255, 0.3);
+  --node: #ff9f0a;
+  --result: #30d158;
+  --transform: #bf5af2;
+  --danger: #ff453a;
+  --toggle-on: #30d158;
+  --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.25), 0 24px 64px rgba(0, 0, 0, 0.3);
+  --shadow-float: 0 2px 6px rgba(0, 0, 0, 0.3), 0 18px 48px rgba(0, 0, 0, 0.5);
+  --shadow-thumb: 0 1px 2px rgba(0, 0, 0, 0.3), 0 3px 8px rgba(0, 0, 0, 0.2);
+  --shadow-knob: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
