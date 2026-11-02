@@ -217,7 +217,7 @@ export function dailyBanner(level: DailyLevel, onLevel: (l: DailyLevel) => void,
                 h(
                   'td',
                   {},
-                  isMe
+                  isMe || live
                     ? null
                     : h('button', {
                         class: 'league-remove',
