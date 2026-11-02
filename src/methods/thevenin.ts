@@ -145,7 +145,10 @@ export function solveThevenin(p: Problem): MethodResult {
       group: 'Rth: belső ellenállás',
     });
   }
-  for (const st of reductionSteps(red)) steps.push({ ...st, highlight: { ...st.highlight, killed: killedMarks, terminals: true }, group: 'Rth: belső ellenállás' });
+  // Újrarajzoláshoz: a terhelés ága nélkül (az Rth a terhelés nélkül nézett eredő).
+  const withoutLoad = { ...p.circuit, branches: p.circuit.branches.filter((b) => !b.elements.some((e) => e.id === load.id)) };
+  for (const st of reductionSteps(red, withoutLoad, { killed: killedMarks, terminals: true }))
+    steps.push({ ...st, highlight: { ...st.highlight, killed: killedMarks, terminals: true }, group: 'Rth: belső ellenállás' });
   steps.push({
     title: 'Belső ellenállás',
     text: 'Az A–B kapcsok felől nézett eredő a helyettesítő generátor belső ellenállása.',

@@ -39,7 +39,7 @@ export function solveSuperposition(p: Problem): MethodResult {
     const marks = others.map((x) => ({ element: x.id, as: x.kind === 'V' ? ('short' as const) : ('open' as const) }));
     const group = `Csak ${s.id} működik`;
     // Elsősorban eredővel és osztókkal; csak ha a részáramkör nem soros-párhuzamos, akkor csomóponti módszerrel.
-    const r = singleSourceSteps(k.net, targets, { group, base: { killed: marks } });
+    const r = singleSourceSteps(k.net, targets, { group, base: { killed: marks }, circuit: p.circuit });
     if (r) {
       partials.push({ source: s.id, values: r.values, derivation: r.steps, dividers: true });
       continue;

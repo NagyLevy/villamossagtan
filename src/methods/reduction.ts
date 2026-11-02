@@ -6,12 +6,13 @@
 import type { Problem } from '../generator/generate';
 import { valueLabel, type Question } from '../generator/questions';
 import { zeroCurrentResistors } from '../simplify/seriesParallel';
-import type { CircuitElement, NetElement, Netlist } from '../solver/model';
+import type { Circuit, CircuitElement, NetElement, Netlist } from '../solver/model';
 import { allElements } from '../solver/model';
 import { toNetlist } from '../solver/netlist';
 import { formatQuantity, type Unit } from '../units';
 import { texElement, texNum, texOf, texQty } from './tex';
-import type { GroupRef, MethodResult, Step, TableRow } from './types';
+import { redrawSequence } from './redraw';
+import type { GroupRef, Highlight, MethodResult, Step, TableRow } from './types';
 
 /** Egy (eredeti vagy összevont) kétpólus a redukció közben. */
 export interface Edge {
@@ -216,9 +217,13 @@ function plain(e: Edge): string {
   return e.kind === 'leaf' ? e.key : `R${e.key}`;
 }
 
-/** Az összevonási lépések. */
-export function reductionSteps(red: Reduction): Step[] {
-  return red.order.map((e) => {
+/**
+ * Az összevonási lépések. Ha `base` (a rajz) adott, minden lépéshez elkészül az újrarajzolt,
+ * egyszerűsített áramkör is (az "Áramkör újrarajzolása" beállításhoz); `extra` a kiemelésbe kerül.
+ */
+export function reductionSteps(red: Reduction, base?: Circuit, extra: Highlight = {}): Step[] {
+  const drawn = base ? redrawSequence(base, red) : [];
+  return red.order.map((e, k) => {
     const parts = e.children.map((c) => rSym(c.edge));
     const values = e.children.map((c) => texNum(c.edge.R));
     const series = e.kind === 'series';
@@ -245,8 +250,21 @@ export function reductionSteps(red: Reduction): Step[] {
         elements: e.leaves,
         groups: [groupOf(e, 'accent'), ...e.children.filter((c) => c.edge.kind !== 'leaf').map((c) => groupOf(c.edge, 'result'))],
       },
+      ...(drawn[k] ? { redraw: redrawOf(drawn[k]!, e, extra) } : {}),
     } satisfies Step;
   });
+}
+
+/** Az újrarajzolt áramkör kiemeléssel: az új eredő ellenállás (a felirata az elemen: "Re1 = 6 Ω"). */
+function redrawOf(d: { circuit: Circuit; keep: string }, _e: Edge, extra: Highlight): NonNullable<Step['redraw']> {
+  return { circuit: d.circuit, highlight: { ...extra, elements: [d.keep] } };
+}
+
+/** A teljes összevonás utáni rajz (egyetlen eredő): az eredő és a forrás lépéseihez. */
+export function finalRedraw(base: Circuit | undefined, red: Reduction, extra: Highlight = {}): Partial<Pick<Step, 'redraw'>> {
+  if (!base || red.order.length === 0) return {};
+  const last = redrawSequence(base, red).at(-1)!;
+  return { redraw: { circuit: last.circuit, highlight: { ...extra, elements: [last.keep] } } };
 }
 
 function nodeOfPoint(p: Problem, pointId: number): number {
@@ -310,8 +328,9 @@ export function solveByReduction(p: Problem): MethodResult {
   }
   if (!red) return { ok: false, reason: 'A hálózat soros-párhuzamos összevonással nem redukálható.' };
 
-  steps.push(...reductionSteps(red));
+  steps.push(...reductionSteps(red, p.circuit));
   const root = red.root;
+  const fin = finalRedraw(p.circuit, red);
   const answers: { questionId: string; value: number }[] = [];
   const reqLabel = sources.length === 0 ? 'R_{AB}' : 'R_{e}';
   steps.push({
@@ -320,6 +339,7 @@ export function solveByReduction(p: Problem): MethodResult {
     terms: [`${reqLabel} = ${rSym(root)}`],
     result: { symbol: reqLabel, value: root.R, unit: 'Ω' },
     highlight: { groups: [groupOf(root, 'result')] },
+    ...fin,
   });
   for (const q of p.questions) if (q.kind === 'Req') answers.push({ questionId: q.id, value: root.R });
 
@@ -340,6 +360,7 @@ export function solveByReduction(p: Problem): MethodResult {
       subst: `I = \\frac{${texQty(s.value, 'V')}}{${texQty(root.R, 'Ω')}}`,
       result: { symbol: 'I', value: I, unit: 'A' },
       highlight: { elements: [s.id], groups: [groupOf(root, 'result')] },
+      ...fin,
     });
   } else {
     const U = s.value * root.R;
@@ -351,6 +372,7 @@ export function solveByReduction(p: Problem): MethodResult {
       subst: `U = ${texQty(s.value, 'A')} \\cdot ${texQty(root.R, 'Ω')}`,
       result: { symbol: 'U', value: U, unit: 'V' },
       highlight: { elements: [s.id], groups: [groupOf(root, 'result')] },
+      ...fin,
     });
   }
 
@@ -507,7 +529,7 @@ function kclResidual(net: Netlist, values: Map<string, { U: number; I: number }>
 export function singleSourceSteps(
   net: Netlist,
   targets: string[],
-  ctx: { group?: string; base?: Partial<Step['highlight']> },
+  ctx: { group?: string; base?: Partial<Step['highlight']>; circuit?: Circuit },
 ): { steps: Step[]; values: Map<string, { U: number; I: number }> } | null {
   const sources = net.elements.filter((e) => e.kind !== 'R');
   if (sources.length !== 1) return null;
@@ -548,10 +570,12 @@ export function singleSourceSteps(
       highlight: { dim: idle, elements: idle },
     });
 
-  steps.push(...reductionSteps(red));
+  steps.push(...reductionSteps(red, ctx.circuit, ctx.base));
   const root = red.root;
+  const fin = finalRedraw(ctx.circuit, red, ctx.base);
   steps.push({
     title: 'Eredő ellenállás',
+    ...fin,
     text: 'A működő forrás felől nézett eredő ellenállás.',
     terms: [`R_{e} = ${rSym(root)}`],
     result: { symbol: 'R_{e}', value: root.R, unit: 'Ω' },
@@ -568,6 +592,7 @@ export function singleSourceSteps(
       subst: `I = \\frac{${texQty(s.value, 'V')}}{${texQty(root.R, 'Ω')}}`,
       result: { symbol: 'I', value: s.value / root.R, unit: 'A' },
       highlight: { elements: [s.id], groups: [groupOf(root, 'result')] },
+      ...fin,
     });
   } else {
     const U = s.value * root.R;

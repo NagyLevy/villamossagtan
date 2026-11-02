@@ -233,6 +233,13 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     }
   });
 
+  const redrawToggle = toggle('Áramkör újrarajzolása', settings.redraw, (v) => {
+    update({ redraw: v });
+    toast(v ? 'Bekapcsolva: minden összevonás után újrarajzolódik az áramkör, az összevont ellenállások helyén az eredőjük.' : 'Kikapcsolva: a rajz végig az eredeti marad.');
+    loadPlayer(true);
+  });
+  redrawToggle.el.title = 'Minden eredő ellenállásnál újrarajzolja az áramkört: az összevont ellenállások helyére az eredőjük kerül.';
+
   const statsBtn = iconButton('Statisztika', ICONS.stats, () => openStats());
   const leaderBtn = iconButton('Ranglista', TROPHY_ICON, () => openLeaderboard());
   leaderBtn.classList.add('lb-btn');
@@ -361,7 +368,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
       'Villamosságtan',
     ),
     methodSeg.el,
-    h('div', { class: 'toolbar-group' }, dailyBtn, topicSel.el, levelSel.el, sdToggle.el, sdMode.el, leaderBtn, statsBtn, themeBtn, accountEl),
+    h('div', { class: 'toolbar-group' }, dailyBtn, topicSel.el, levelSel.el, sdToggle.el, sdMode.el, redrawToggle.el, leaderBtn, statsBtn, themeBtn, accountEl),
   );
 
   // ───────── Feladatfej ─────────
@@ -439,10 +446,12 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
 
   const applyHighlight = (index: number) => {
     const step = solution?.steps[index];
-    if (problem) showCircuit(step?.circuit ?? problem.circuit);
+    // Áramkör újrarajzolása (csak ha be van kapcsolva): az összevonás utáni, egyszerűsített rajz.
+    const rd = settings.redraw && !step?.circuit ? step?.redraw : undefined;
+    if (problem) showCircuit(step?.circuit ?? rd?.circuit ?? problem.circuit);
     const svg = canvas.querySelector('svg');
     if (!svg || !overlayCtx) return;
-    const hl = step?.highlight ?? {};
+    const hl = rd?.highlight ?? step?.highlight ?? {};
     const targets = new Set(step?.circuit ? [] : (problem?.questions.map((q) => q.target).filter(Boolean) as string[]));
     const strong = new Set(hl.elements ?? []);
     const faint = new Set([...(hl.dim ?? []), ...(hl.killed ?? []).map((k) => k.element)]);

@@ -90,6 +90,11 @@ export interface Step {
   table?: TableRow[];
   /** Más áramkör rajzolódik erre a lépésre (pl. szuperpozíció részáramköre). */
   circuit?: Circuit;
+  /**
+   * "Áramkör újrarajzolása" beállításnál: az összevonás utáni, egyszerűsített rajz (az összevont
+   * ellenállások helyén egyetlen eredő) és a hozzá illő kiemelés.
+   */
+  redraw?: { circuit: Circuit; highlight: Highlight };
   /** Fejezet a lépéslistában (pl. "Uth: üresjárás"); az első lépés előtt címként jelenik meg. */
   group?: string;
   /** Betétábra: a hagyományos (rézsútos) Y és Δ alak a kivezetésekkel és az értékekkel. */

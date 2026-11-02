@@ -25,6 +25,8 @@ export interface Settings {
   /** Napi kihívás mód és a választott nehézség. */
   dailyActive: boolean;
   dailyLevel: DailyLevel;
+  /** Áramkör újrarajzolása: összevonásonként egyszerűsödő rajz (csak ha be van kapcsolva). */
+  redraw: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   speed: 1,
   mode: 'gyakorlo',
   examTimer: true,
+  redraw: false,
   dailyActive: true,
   dailyLevel: 'kozepes',
 };
