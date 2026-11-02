@@ -26,7 +26,7 @@ export function loginPage(root: HTMLElement, onLogin: (a: Account) => void, onGu
     pass2.required = register;
     pass.setAttribute('autocomplete', register ? 'new-password' : 'current-password');
     hint.textContent = register
-      ? 'A felhasználónév 3–20 karakter (betű, szám, pont, kötőjel, aláhúzás), ezen a néven látnak a ranglistán. A jelszó legalább 6 karakter. E-mail nem kell.'
+      ? 'A felhasználónév 3–20 karakter, szóköz nélkül; ezen a néven látnak a ranglistán. E-mail nem kell.'
       : 'Lépj be, és bármelyik gépről folytathatod a napi kihívást ugyanazzal a haladással.';
     error.textContent = '';
   };

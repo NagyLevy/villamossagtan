@@ -1,4 +1,5 @@
-# Minden main ágra történő feltöltéskor lefut: tesztek, build, majd publikálás GitHub Pagesre.
+# Minden main ágra történő feltöltéskor lefut: build és publikálás GitHub Pagesre, közben
+# párhuzamosan a tesztek (így a publikálás nem várja meg őket; a hibás tesztet az Actions fül mutatja).
 name: Publikálás
 
 on:
@@ -16,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +27,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
