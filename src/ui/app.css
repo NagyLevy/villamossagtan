@@ -2782,3 +2782,167 @@ html.lite .fx-value.is-final {
 .daily-task-pts.is-zero {
   color: var(--danger);
 }
+
+/* ───────── Telefon ───────── */
+
+/* A hosszú képletek a saját dobozukban görgethetők, nem tolják szét az oldalt. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 2px;
+}
+
+@media (max-width: 640px) {
+  /* Eszköztár: nem ragad fent (különben a képernyő harmadát elfoglalja), két kompakt sorban. */
+  .toolbar {
+    position: static;
+    gap: 8px;
+    padding: 10px max(12px, env(safe-area-inset-right, 0px)) 10px max(12px, env(safe-area-inset-left, 0px));
+  }
+
+  .toolbar > .seg,
+  .toolbar > [role='radiogroup'] {
+    order: 3;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .toolbar-group {
+    order: 2;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 8px;
+    padding-bottom: 2px;
+  }
+
+  .toolbar-group > * {
+    flex: none;
+  }
+
+  .toolbar ::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Tartalom: kisebb margók, kisebb címek. */
+  .main {
+    padding: 16px max(12px, env(safe-area-inset-right, 0px)) 150px max(12px, env(safe-area-inset-left, 0px));
+  }
+
+  .problem-head {
+    margin-bottom: 16px;
+  }
+
+  .problem-title {
+    font-size: 23px;
+  }
+
+  .workspace {
+    gap: 14px;
+  }
+
+  .canvas-card {
+    padding: 12px 10px 14px;
+  }
+
+  .canvas {
+    min-height: 0;
+    padding: 4px 0 8px;
+  }
+
+  .canvas svg {
+    max-height: 34vh;
+  }
+
+  /* A rajz fent marad, amíg a levezetésben görgetsz (így látszik, melyik elemről szól a lépés). */
+  .canvas-card {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    box-shadow: var(--shadow-float);
+  }
+
+  .canvas-card .legend {
+    display: none;
+  }
+
+  .canvas-card .card-bar {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    min-height: 0;
+  }
+
+  .panel {
+    padding: 18px 14px 16px;
+    gap: 16px;
+  }
+
+  .daily {
+    padding: 16px 14px;
+    margin-bottom: 16px;
+  }
+
+  .daily-gate {
+    padding: 28px 16px;
+  }
+
+  /* 16 px alatt az iPhone ráközelít a mezőre gépeléskor. */
+  .answer-input,
+  .login-field .answer-input {
+    font-size: 16px;
+  }
+
+  .answer-row {
+    flex-wrap: wrap;
+  }
+
+  .answer-row .answer-input {
+    flex: 1 1 160px;
+  }
+
+  /* Lejátszó: teljes szélességű alsó sáv, sebesség-csúszka nélkül. */
+  .dock {
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    transform: none;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 18px;
+  }
+
+  .dock .slider-row,
+  .dock .slider {
+    display: none;
+  }
+
+  .dock > :is(.stepbar, .step-bar, [class*='bar']) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .dock-count {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  /* Felugró pontozás: kisebb kártya. */
+  .fx-card {
+    padding: 22px 16px 16px;
+    border-radius: 22px;
+  }
+
+  .fx-foot {
+    gap: 20px;
+  }
+
+  .toast {
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 32px);
+    text-align: center;
+  }
+}
