@@ -2,7 +2,7 @@
 // amíg nyitva van. Mindenki pontját a naplójából számoljuk (ugyanúgy, mint a sajátunkat).
 // Az "Összesen" és a "Ma" fül között lehet váltani; alul látszik, mennyi kell a következő helyhez.
 
-import { ACHIEVEMENTS, fullScore } from '../daily/achievements';
+import { ACHIEVEMENTS, cachedScore } from '../daily/achievements';
 import { loadProgress, type ProgressData } from '../daily/progress';
 import { formatCompact, formatMult } from '../daily/score';
 import { dailyChallenge, dayKey, type DailyLevel } from '../daily/schedule';
@@ -32,7 +32,7 @@ type Sort = 'total' | 'today';
 const taskCount = (day: string, lvl: DailyLevel) => dailyChallenge(new Date(`${day}T12:00:00`), lvl).tasks.length;
 
 function rowOf(id: string, name: string, data: ProgressData, isMe: boolean, dropped: number): Row {
-  const s = fullScore(data, new Date(), taskCount);
+  const s = cachedScore(data, taskCount);
   return { id, name, isMe, total: s.total, today: s.perDay[dayKey(new Date())] ?? 0, streak: s.streak, mult: s.mult, ach: s.achievements.length, dropped };
 }
 

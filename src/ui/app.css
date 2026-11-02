@@ -2723,3 +2723,58 @@ select {
     animation: none;
   }
 }
+
+
+/* ───────── Könnyített grafika (hardveres gyorsítás nélkül) ───────── */
+
+html.lite *,
+html.lite *::before,
+html.lite *::after,
+html.lite .sheet::backdrop {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html.lite .toolbar,
+html.lite .dock,
+html.lite .toast,
+html.lite .sheet,
+html.lite .ach-pop {
+  background: var(--surface) !important;
+}
+
+html.lite .fx-overlay,
+html.lite .sheet::backdrop {
+  background: color-mix(in srgb, var(--bg) 88%, transparent) !important;
+}
+
+html.lite .lb-glow {
+  display: none;
+}
+
+html.lite .lb-title,
+html.lite .lb-crown,
+html.lite .lb-block::after,
+html.lite .lb-live.is-live::before,
+html.lite .fx-value,
+html.lite .ach-pop-icon {
+  animation: none !important;
+}
+
+html.lite .lb-title {
+  color: var(--ink);
+  background: none;
+}
+
+html.lite .lb-slot-1 .lb-podium-score,
+html.lite .fx-value.is-final {
+  text-shadow: none;
+}
+
+.sheet-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}

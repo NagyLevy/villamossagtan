@@ -228,3 +228,18 @@ export function projectedFull(score: FullScore, day: string, lvl: DailyLevel, re
   const streak = streakMultiplier(streakBefore(new Set(score.doneDays), day) + 1);
   return Math.round(BASE_POINTS[lvl] * time * (1 - pen) * streak * hypeMultiplier(day) * score.mult);
 }
+
+const cache = new Map<string, FullScore>();
+
+/** Ugyanaz, mint a `fullScore` mára, de változatlan naplóra nem számol újra (a sáv másodpercenként kérdezi). */
+export function cachedScore(data: ProgressData, taskCount: (day: string, lvl: DailyLevel) => number): FullScore {
+  const now = new Date();
+  const key = `${dayKey(now)}|${JSON.stringify(data)}`;
+  let s = cache.get(key);
+  if (!s) {
+    s = fullScore(data, now, taskCount);
+    if (cache.size > 40) cache.clear();
+    cache.set(key, s);
+  }
+  return s;
+}

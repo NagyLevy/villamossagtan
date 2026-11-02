@@ -5,6 +5,7 @@ import { adoptProgress, clearProgress } from './daily/progress';
 import { connect, loadMine, onlineState, signOut, type Account } from './online/league';
 import { startApp } from './ui/app';
 import { loginPage } from './ui/login';
+import { initPerf } from './ui/perf';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -50,4 +51,5 @@ async function boot(): Promise<void> {
   );
 }
 
+initPerf();
 void boot();

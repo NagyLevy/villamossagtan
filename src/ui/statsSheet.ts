@@ -4,7 +4,8 @@ import { TOPIC_NAMES, type Topic } from '../generator/generate';
 import { TOPOLOGY_NAMES, type Topology } from '../generator/templates';
 import { LEVEL_NAMES, type Level } from '../generator/values';
 import { renderBars } from '../render/bars';
-import { button } from './components';
+import { button, toggle } from './components';
+import { isLite, setLite } from './perf';
 import { h } from './dom';
 import { methodList } from './settings';
 import { clearAttempts, loadAttempts, summarize } from './stats';
@@ -48,7 +49,7 @@ export function openStats(): void {
       section('Nehézség szerint', renderBars(s.byLevel, (k) => LEVEL_NAMES[k as Level] ?? k)),
       section('Módszerenként', renderBars(s.byMethod, (k) => methodNames.get(k) ?? k)),
       section('Topológiánként', renderBars(s.byTopology, (k) => (k === 'egyedi' ? 'Egyedi' : TOPOLOGY_NAMES[k as Topology] ?? k))),
-      h('div', { class: 'sheet-foot' }, clearBtn),
+      h('div', { class: 'sheet-foot' }, toggle('Könnyített grafika (ha akad az oldal)', isLite(), (v) => setLite(v)).el, clearBtn),
     );
   };
   render();

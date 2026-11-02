@@ -2,7 +2,7 @@
 // sorozat, ZH-láz szorzó, achievementek, visszaszámlálók és a ranglista (pontkóddal vagy
 // meghívó linkkel, fiókoktól függetlenül; a barát pontját a naplójából mi számoljuk újra).
 
-import { ACHIEVEMENTS, TASK_MULT, fullScore, projectedFull, type FullScore } from '../daily/achievements';
+import { ACHIEVEMENTS, TASK_MULT, cachedScore, projectedFull, type FullScore } from '../daily/achievements';
 import { dayDone, loadProgress, type ProgressData } from '../daily/progress';
 import { BASE_POINTS, PAR_MINUTES, formatMult, formatPoints, hypeMultiplier } from '../daily/score';
 import { DAILY_LEVELS, ZH_DAY, dailyChallenge, dayKey, daysUntilZh, msUntilNext, type DailyChallenge, type DailyLevel } from '../daily/schedule';
@@ -39,14 +39,20 @@ function ms(msVal: number): string {
 const pts = (n: number) => `${formatPoints(n)} pont`;
 const mult = formatMult;
 const taskCount = (day: string, lvl: DailyLevel) => dailyChallenge(new Date(`${day}T12:00:00`), lvl).tasks.length;
-const scoreOf = (data: ProgressData) => fullScore(data, new Date(), taskCount);
+const scoreOf = (data: ProgressData) => cachedScore(data, taskCount);
 
 /** A saját pontom ugyanazzal az ellenőrzéssel, mint a barátoké (így igazságos az összevetés). */
+let meCache: { key: string; p: PlayerScore } | null = null;
 function mePlayer(): PlayerScore {
   const league = loadLeague();
+  const data = loadProgress();
+  const key = `${league.me.name}|${league.me.id}|${JSON.stringify(data)}`;
+  if (meCache?.key === key) return meCache.p;
   const at = Date.now();
-  const r = decodeScore(encodeScore({ name: league.me.name || 'Én', id: league.me.id, at, data: loadProgress() }));
-  return r.ok ? r.score : { name: league.me.name || 'Én', id: league.me.id, at, data: {}, dropped: 0 };
+  const r = decodeScore(encodeScore({ name: league.me.name || 'Én', id: league.me.id, at, data }));
+  const p = r.ok ? r.score : { name: league.me.name || 'Én', id: league.me.id, at, data: {}, dropped: 0 };
+  meCache = { key, p };
+  return p;
 }
 
 /** Meghívó link: ha a címben pontkód van, a küldő magától felkerül a ranglistára. */
