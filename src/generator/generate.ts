@@ -20,6 +20,7 @@ import {
   type GivenValue,
   type Question,
 } from './questions';
+import { injectStarDelta, STAR_DELTA_TOPICS } from './inject';
 import { Rng } from './rng';
 import { makeElement, Sketch, type Slot, type SlotRole } from './sketch';
 import { bridge, gridCellsOf, ladder, meshOptions, realSource, singleLoop, skeletonFor, type Topology } from './templates';
@@ -97,13 +98,24 @@ const EPS = 1e-9;
 export function generateProblem(options: GenerateOptions): Problem {
   const topic = options.topic;
   const level: Level = topic === 'zh' ? 'zh' : options.level ?? 'alapozo';
-  const rng = new Rng(`${options.seed}|${topic}|${level}|${options.topology ?? ''}|${options.sourceCount ?? ''}|${options.sourceMix ?? ''}|${options.zhType ?? ''}|${options.starDelta ? 1 : 0}`);
+  const rng = new Rng(`${options.seed}|${topic}|${level}|${options.topology ?? ''}|${options.sourceCount ?? ''}|${options.sourceMix ?? ''}|${options.zhType ?? ''}|0`);
   const starDelta = options.starDelta ?? false;
+  // Csillag-delta bekapcsolva: ugyanaz a feladat készül (ugyanaz a seed), és utána kerül bele egy új
+  // ellenállás, ami miatt átalakítás kell. Ezekben a témakörökben az alapfeladat maga nem hidas.
+  const inject = starDelta && STAR_DELTA_TOPICS.has(topic);
+  const draftOptions = inject ? { ...options, starDelta: false } : options;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const draft = buildDraft(topic, level, options, rng);
+    const draft = buildDraft(topic, level, draftOptions, rng);
     if (!draft) continue;
-    const circuit = draft.circuit;
+    let circuit = draft.circuit;
+    if (inject) {
+      const sdRng = new Rng(`${options.seed}|csillag-delta|${attempt}`);
+      const mode = options.starDeltaMode === 'csillag-delta' || options.starDeltaMode === 'delta-csillag' ? options.starDeltaMode : sdRng.pick(['delta-csillag', 'csillag-delta'] as const);
+      const withBridge = injectStarDelta(circuit, sdRng, mode);
+      if (!withBridge) continue;
+      circuit = withBridge;
+    }
     if (circuitIssues(circuit).length) continue;
     // Egy ablakban (hurokban) legfeljebb egy forrás lehet.
     if (tooManySourcesInMesh(circuit)) continue;
@@ -112,7 +124,7 @@ export function generateProblem(options: GenerateOptions): Problem {
     if (seriesSourcePairs(map.net).length) continue;
     const sol = solve(map.net);
     if (!sol) continue;
-    const questions = draft.ask({ circuit, map, sol, rng, opts: { starDelta } });
+    const questions = draft.ask({ circuit, map, sol, rng, opts: { starDelta: inject ? false : starDelta } });
     if (!questions || questions.length === 0) continue;
     const numeric = questions.filter((q) => q.kind !== 'table');
     if (numeric.some((q) => !Number.isFinite(q.answer) || Math.abs(q.answer) < EPS)) continue;

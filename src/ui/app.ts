@@ -4,6 +4,7 @@
 
 import { generateProblem, TOPIC_NAMES, type Problem, type Topic } from '../generator/generate';
 import { randomSeed } from '../generator/rng';
+import { STAR_DELTA_TOPICS } from '../generator/inject';
 import { TOPOLOGY_NAMES } from '../generator/templates';
 import { LEVEL_NAMES, type Level } from '../generator/values';
 import { applicableMethods, solveWith, type Solution } from '../methods';
@@ -176,28 +177,37 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     settings.starDeltaMode,
     (v) => {
       update({ starDeltaMode: v });
-      newProblem();
+      // Ugyanaz a feladat, csak az átalakítás iránya változik (a napi kihívást nem érinti).
+      if (!settings.dailyActive) generate();
     },
     'sm',
   );
   sdMode.el.hidden = !settings.starDelta;
-  let topicBeforeSd: Topic = settings.topic === 'csillag-delta' ? 'eredo' : settings.topic;
   const sdToggle = toggle('Csillag-delta', settings.starDelta, (v) => {
     update({ starDelta: v });
     sdMode.el.hidden = !v;
-    // Bekapcsolva csillag-delta átalakítást igénylő feladatok jönnek; kikapcsolva vissza az előző témakörre.
-    if (v && settings.topic !== 'csillag-delta') {
-      topicBeforeSd = settings.topic;
-      update({ topic: 'csillag-delta' });
-    }
     if (!v && settings.method === 'csillag-delta') update({ method: 'redukcio' });
-    if (!v && settings.topic === 'csillag-delta') update({ topic: topicBeforeSd });
+    if (!v && settings.topic === 'csillag-delta') update({ topic: 'eredo' });
     topicSel.setOptions(topicOptions(), settings.topic);
     methodSeg.setOptions(methodOptions(), settings.method);
     syncLevel();
     // A napi kihívást a kapcsoló nem érinti (annak a feladatai mindenkinél ugyanazok).
-    if (!settings.dailyActive) newProblem();
-    else toast('A napi kihívás feladatai ettől nem változnak; a csillag-delta a szabad gyakorlásra vonatkozik.');
+    if (settings.dailyActive) return toast('A napi kihívás feladatai ettől nem változnak; a csillag-delta a szabad gyakorlásra vonatkozik.');
+    // Ugyanaz a feladat (ugyanaz a seed): bekapcsolva egy új ellenállás kerül bele, ami miatt átalakítás kell.
+    if (v && settings.topic !== 'csillag-delta' && !STAR_DELTA_TOPICS.has(settings.topic)) {
+      toast('Ebben a témakörben nincs mit átalakítani. Csillag-delta az Eredő ellenállás, a Feszültség- és áramosztás és a Teljes hálózatanalízis feladataiba kerül.');
+    }
+    if (v && STAR_DELTA_TOPICS.has(settings.topic)) update({ method: 'csillag-delta' });
+    generate();
+    if (v && STAR_DELTA_TOPICS.has(settings.topic) && problem) {
+      try {
+        const base = generateProblem({ seed, topic: settings.topic, level: settings.topic === 'zh' ? 'zh' : settings.level });
+        if (base.attempts !== problem.attempts) toast('Ebbe a feladatba nem fért el a csillag-delta (túl kevés benne a csomópont), ezért egy hasonló, kicsit nagyobb feladatot kaptál.');
+        else toast('Bekerült egy új ellenállás: ettől a hálózat hidas lett, és csak csillag-delta átalakítással vonható össze.');
+      } catch {
+        // Az összevetés csak tájékoztató.
+      }
+    }
   });
 
   const statsBtn = iconButton('Statisztika', ICONS.stats, () => openStats());
@@ -911,8 +921,9 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     }
     // Ha a választott módszer nem illik a feladathoz, de van más, arra váltunk (napi módban nem).
     if (!locked && !usable.includes(settings.method) && usable.length) {
-      update({ method: usable[0]! });
-      methodSeg.set(usable[0]!);
+      const next = settings.starDelta && usable.includes('csillag-delta') ? 'csillag-delta' : usable[0]!;
+      update({ method: next });
+      methodSeg.set(next);
     }
     const prefer = settings.starDeltaMode === 'veletlen' ? undefined : settings.starDeltaMode;
     const r = solveWith(problem, settings.method, { reverse, prefer });
