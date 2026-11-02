@@ -2778,3 +2778,7 @@ html.lite .fx-value.is-final {
   justify-content: space-between;
   gap: 12px;
 }
+
+.daily-task-pts.is-zero {
+  color: var(--danger);
+}

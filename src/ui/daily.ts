@@ -309,7 +309,7 @@ export function dailyBanner(level: DailyLevel, onLevel: (l: DailyLevel) => void,
               { class: `daily-task ${i === current ? 'is-current' : ''} ${state}`, attrs: { type: 'button', 'aria-current': i === current ? 'true' : undefined }, on: { click: () => onTask(i) } },
               h('span', { class: 'daily-num num', text: r?.solvedAt ? '✓' : String(i + 1) }),
               h('span', { text: t.title }),
-              got ? h('span', { class: 'daily-task-pts num', text: `+${formatPoints(got.points)}` }) : null,
+              got ? h('span', { class: 'daily-task-pts num', text: `+${formatPoints(got.points)}` }) : r?.solvedAt ? h('span', { class: 'daily-task-pts is-zero num', attrs: { title: '10 mp-en belül a Start után, vagy a megoldás megnézése után: nem kap pontot' }, text: r.solution ? '0 · megoldás' : '0 · túl gyors' }) : null,
             ),
           );
         }),

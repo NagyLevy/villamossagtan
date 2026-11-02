@@ -23,6 +23,7 @@ import { TROPHY_ICON, openLeaderboard } from './leaderboardView';
 import { dailyChallenge, dayKey } from '../daily/schedule';
 import { loadProgress, openTask, recordEvent, type TaskEvent } from '../daily/progress';
 import { PAR_MINUTES } from '../daily/score';
+import { MIN_SOLVE_MS } from '../daily/share';
 import { dailyBanner } from './daily';
 import type { Account } from '../online/league';
 import { button, iconButton, segmented, select, slider, stepBar, toast, toggle, type SegmentOption } from './components';
@@ -219,6 +220,11 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     banner.render(cur.c, dailyIndex);
   };
   /** Ellenőrzés után: kész, ha minden kérdése helyes; a rossz válasz levonással jár. */
+  /** Napi feladat, ami még nincs megoldva: ilyenkor nincs Ellenőrző nézet (az kiírná a választ). */
+  const dailyUnsolved = () => {
+    const cur = currentDaily();
+    return !!cur && !loadProgress()[cur.c.day]?.[settings.dailyLevel]?.[cur.t.id]?.solvedAt;
+  };
   const dailyUpdate = (wrongNow: boolean) => {
     const cur = currentDaily();
     if (!cur || !problem) return;
@@ -229,9 +235,22 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
       const first = !loadProgress()[cur.c.day]?.[settings.dailyLevel]?.[cur.t.id]?.solvedAt;
       recordEvent(cur.c.day, settings.dailyLevel, cur.t.id, 'solved');
       banner.render(cur.c, dailyIndex);
+      // Megoldás után már elérhető az Ellenőrző nézet.
+      if (first) renderPanel();
       // Első megoldáskor a pontozás-animáció, utána a szokásos jelzés.
-      const fx = first ? banner.celebrateSolve(cur.c.day, settings.dailyLevel, cur.t.id, cur.t.title, before) : Promise.resolve();
-      void fx.then(() => toast(dailyIndex < cur.c.tasks.length - 1 ? 'Megvan! Jöhet a következő feladat (N).' : 'Kész a mai kihívás!'));
+      const rec = loadProgress()[cur.c.day]?.[settings.dailyLevel]?.[cur.t.id];
+      // A Start utáni 10 mp-en belüli megoldás nem kap pontot (ennyi idő alatt nem lehet kiszámolni).
+      const tooFast = !!rec?.solvedAt && rec.solvedAt - rec.opened < MIN_SOLVE_MS;
+      const fx = first && !tooFast ? banner.celebrateSolve(cur.c.day, settings.dailyLevel, cur.t.id, cur.t.title, before) : Promise.resolve();
+      void fx.then(() =>
+        toast(
+          tooFast
+            ? `Helyes, de ${MIN_SOLVE_MS / 1000} mp-en belül a Start után: ez nem kap pontot.`
+            : dailyIndex < cur.c.tasks.length - 1
+              ? 'Megvan! Jöhet a következő feladat (N).'
+              : 'Kész a mai kihívás!',
+        ),
+      );
       return;
     }
     if (wrongNow) recordEvent(cur.c.day, settings.dailyLevel, cur.t.id, 'wrong');
@@ -688,7 +707,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
         : null,
       isExam() && settings.examTimer ? timerEl : null,
       h('span', { class: 'spacer' }),
-      !(isExam() && !submitted)
+      !(isExam() && !submitted) && !dailyUnsolved()
         ? button(
             verifyOpen ? 'Ellenőrzés elrejtése' : 'Ellenőrző nézet',
             () => {
@@ -752,7 +771,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
       ...extras,
       ...(body ? [body] : []),
       ...(controls ? [controls] : []),
-      ...(verifyOpen && problem && !(isExam() && !submitted) ? [verifyView()] : []),
+      ...(verifyOpen && problem && !(isExam() && !submitted) && !dailyUnsolved() ? [verifyView()] : []),
       ...(chart ? [chart] : []),
       answersSection(),
     );
@@ -958,7 +977,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     dock.hidden = waiting;
     if (!waiting || !cur) return;
     gateTitle.textContent = `${cur.c.tasks.indexOf(cur.t) + 1}. feladat: ${cur.t.title}`;
-    gateInfo.textContent = `Az óra a Start megnyomásakor indul, és utána nem áll meg (újratöltéskor sem). Célidő: ${PAR_MINUTES[settings.dailyLevel]} perc, a felén belül dupla pont.`;
+    gateInfo.textContent = `Csak akkor nyomd meg, ha neki is állsz: az óra a Start megnyomásakor indul, és utána nem áll meg (újratöltéskor sem). Célidő: ${PAR_MINUTES[settings.dailyLevel]} perc, a felén belül dupla pont.`;
     if (document.activeElement === document.body) startBtn.focus();
   }
 
