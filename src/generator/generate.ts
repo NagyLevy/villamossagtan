@@ -93,6 +93,8 @@ interface Ctx {
 }
 
 const MAX_ATTEMPTS = 3000;
+/** Egy mérettel nagyobb hálózat (csillag-delta beépítéséhez, ha a kisebbe nem fér). */
+const LARGER: Partial<Record<Level, Level>> = { alapozo: 'konnyu', konnyu: 'kozepes', kozepes: 'nehez' };
 const EPS = 1e-9;
 
 export function generateProblem(options: GenerateOptions): Problem {
@@ -105,15 +107,22 @@ export function generateProblem(options: GenerateOptions): Problem {
   const inject = starDelta && STAR_DELTA_TOPICS.has(topic);
   const draftOptions = inject ? { ...options, starDelta: false } : options;
 
+  // Ha a hálózat ezen a méreten túl kicsi a hídhoz (pl. könnyű Thevenin), egy mérettel nagyobb
+  // hálózatból készül; a szint (és vele az értékkészlet) marad.
+  let draftLevel = level;
+  let failedInjections = 0;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const draft = buildDraft(topic, level, draftOptions, rng);
+    const draft = buildDraft(topic, draftLevel, draftOptions, rng);
     if (!draft) continue;
     let circuit = draft.circuit;
     if (inject) {
       const sdRng = new Rng(`${options.seed}|csillag-delta|${attempt}`);
       const mode = options.starDeltaMode === 'csillag-delta' || options.starDeltaMode === 'delta-csillag' ? options.starDeltaMode : sdRng.pick(['delta-csillag', 'csillag-delta'] as const);
       const withBridge = injectStarDelta(circuit, sdRng, mode);
-      if (!withBridge) continue;
+      if (!withBridge) {
+        if (++failedInjections % 40 === 0) draftLevel = LARGER[draftLevel] ?? draftLevel;
+        continue;
+      }
       circuit = withBridge;
     }
     if (circuitIssues(circuit).length) continue;
@@ -124,7 +133,7 @@ export function generateProblem(options: GenerateOptions): Problem {
     if (seriesSourcePairs(map.net).length) continue;
     const sol = solve(map.net);
     if (!sol) continue;
-    const questions = draft.ask({ circuit, map, sol, rng, opts: { starDelta: inject ? false : starDelta } });
+    const questions = draft.ask({ circuit, map, sol, rng, opts: { starDelta } });
     if (!questions || questions.length === 0) continue;
     const numeric = questions.filter((q) => q.kind !== 'table');
     if (numeric.some((q) => !Number.isFinite(q.answer) || Math.abs(q.answer) < EPS)) continue;
@@ -597,11 +606,12 @@ function theveninDraft(level: Level, o: GenerateOptions, rng: Rng): Draft | null
     circuit,
     topology,
     ask: (ctx) => {
-      const th = theveninAt(ctx.map.net, load.id);
+      // A terhelést a szerepe alapján keressük: csillag-delta beépítésekor az elemek újraszámozódnak.
+      const el = allElements(ctx.circuit).find((e) => e.role === 'load')!;
+      const th = theveninAt(ctx.map.net, el.id);
       if (!th || th.Rth < EPS || Math.abs(th.Uth) < EPS || Math.abs(th.In) < EPS) return null;
-      if (!ctx.opts.starDelta && needsStarDeltaBetween(withoutElement(ctx.map, load.id), th.a, th.b)) return null;
-      const el = allElements(ctx.circuit).find((e) => e.id === load.id)!;
-      return theveninQuestions(ctx.circuit, el, th, ctx.sol.elements.get(load.id)!.I);
+      if (!ctx.opts.starDelta && needsStarDeltaBetween(withoutElement(ctx.map, el.id), th.a, th.b)) return null;
+      return theveninQuestions(ctx.circuit, el, th, ctx.sol.elements.get(el.id)!.I);
     },
   };
 }

@@ -16,7 +16,7 @@ import { toNetlist } from '../solver/netlist';
 import { formatQuantity } from '../units';
 import { targetResistors } from './common';
 import type { Values } from './engine';
-import { dividerStep, distribute, findPath, groupOf, reduceSP, reductionSteps, rSym } from './reduction';
+import { dividerStep, distribute, findPath, groupOf, reduceSP, reductionSteps, rSym, type Reduction } from './reduction';
 import { texElement, texNum, texOf, texQty } from './tex';
 import type { Highlight, MethodAnswer, MethodResult, Step } from './types';
 
@@ -125,53 +125,15 @@ function networkTransform(p: Problem, opts: StarDeltaOptions): MethodResult {
   }
   const rs = net.elements.filter((e) => e.kind === 'R');
   if (isSeriesParallelReducible(rs.map((e) => ({ a: e.a, b: e.b })), t1, t2)) return { ok: false, reason: 'Ehhez a hálózathoz nem kell csillag-delta átalakítás: soros-párhuzamosan redukálható.' };
-  const tr = findTransform(rs, net.nodeCount, t1, t2, opts.prefer ?? 'delta-csillag') ?? findTransform(rs, net.nodeCount, t1, t2, opts.prefer === 'delta-csillag' ? 'csillag-delta' : 'delta-csillag');
-  if (!tr) return { ok: false, reason: 'Egyetlen csillag-delta átalakítás nem elég ehhez a hálózathoz.' };
-
-  const drawn = new Set(allElements(p.circuit).map((e) => e.id));
-  const removedIds = tr.removed.map((e) => e.id);
-  const isDelta = tr.kind === 'delta-csillag';
-  const newNames = isDelta ? ['R1', 'R2', 'R3'] : ['R12', 'R23', 'R31'];
-  const labels = tr.added.map((e, i) => `${newNames[i]} = ${formatQuantity(e.value, 'Ω', { sig: 3 })}`) as [string, string, string];
-  const portLabels = tr.terminals.map((n, i) => ({ node: n, label: String(i + 1) }));
-  const after: Highlight = { dim: removedIds, transform: { kind: tr.kind, terminals: tr.terminals, labels }, nodeLabels: portLabels, terminals: true };
-  const filterH = (h: Highlight): Highlight => ({
-    ...h,
-    elements: h.elements?.filter((id) => drawn.has(id)),
-    groups: h.groups?.map((g) => ({ ...g, elements: g.elements.filter((id) => drawn.has(id)) })).filter((g) => g.elements.length),
-    arrows: h.arrows?.filter((a) => drawn.has(a.element)),
+  const done = transformAndReduce(rs, net.nodeCount, t1, t2, {
+    prefer: opts.prefer,
+    drawn: new Set(allElements(p.circuit).map((e) => e.id)),
+    from: s ? 'A forrás' : 'Az A és B kapcsok',
+    group: 'Összevonás',
   });
-  const steps: Step[] = [];
-  steps.push({
-    title: 'Miért kell átalakítás?',
-    text: `${s ? 'A forrás' : 'Az A és B kapcsok'} felől nézve nincs két olyan ellenállás, amely sorosan (egymás után, elágazás nélkül) vagy párhuzamosan (ugyanazon két pont között) kapcsolódna: ez hídkapcsolás. Ezért ${isDelta ? 'egy háromszöget (deltát) csillaggá' : 'egy csillagot deltává'} alakítunk; utána már összevonható.`,
-    highlight: { terminals: true },
-    group: 'Átalakítás',
-  });
-  steps.push({
-    title: isDelta ? 'A delta és a három kivezetés' : 'A csillag és a három kivezetés',
-    text: isDelta
-      ? `${removedIds.join(', ')} háromszöget alkot az 1, 2, 3 csomópont között. Ezt cseréljük egy csillagra: három ellenállás, amely egy új, közös pontban találkozik. A kivezetések a helyükön maradnak.`
-      : `${removedIds.join(', ')} egy közös pontban (csillagpont) találkozik, a másik végük az 1, 2, 3 csomópont. Ezt cseréljük deltára: a csillagpont eltűnik, a kivezetések közé kerül egy-egy ellenállás.`,
-    highlight: { groups: [{ elements: removedIds, label: isDelta ? 'delta' : 'csillag', tone: 'transform' }], nodeLabels: portLabels, terminals: true },
-    group: 'Átalakítás',
-  });
-  const before = tr.removed.map((e) => e.value) as [number, number, number];
-  const afterVals = tr.added.map((e) => e.value) as [number, number, number];
-  steps.push(...formulaSteps(tr.kind, before, afterVals, { groups: [{ elements: removedIds, label: isDelta ? 'delta' : 'csillag', tone: 'transform' }], nodeLabels: portLabels }, 'Átalakítás'));
-  steps.push({
-    title: 'Az átalakított hálózat',
-    text: `A régi ${isDelta ? 'delta' : 'csillag'} helyére az új ${isDelta ? 'csillag' : 'delta'} kerül (az ábrán szaggatottan). A három kivezetés felől nézve semmi sem változott, ezért a hálózat többi része ugyanúgy viselkedik — és most már soros-párhuzamosan összevonható.`,
-    highlight: after,
-    group: 'Átalakítás',
-  });
-
-  // Redukció az átalakított hálózaton.
-  const rest = rs.filter((e) => !removedIds.includes(e.id));
-  const all: NetElement[] = [...rest, ...tr.added];
-  const red = reduceSP(all, t1, t2);
-  if (!red) return { ok: false, reason: 'Az átalakítás után sem redukálható.' };
-  for (const st of reductionSteps(red)) steps.push({ ...st, highlight: filterH({ ...st.highlight, ...mergeAfter(st.highlight, after) }), group: 'Összevonás' });
+  if (!done) return { ok: false, reason: 'Egyetlen csillag-delta átalakítás nem elég ehhez a hálózathoz.' };
+  const { tr, red, all, after, filterH, removedIds, isDelta } = done;
+  const steps: Step[] = [...done.steps];
   const reqLabel = s ? 'R_{e}' : 'R_{AB}';
   steps.push({
     title: 'Eredő ellenállás',
@@ -270,6 +232,68 @@ function networkTransform(p: Problem, opts: StarDeltaOptions): MethodResult {
     if (raw !== undefined) answers.push({ questionId: q.id, value: q.magnitudeOnly ? Math.abs(raw) : raw });
   }
   return { ok: true, solution: { method: 'csillag-delta', title: 'Csillag-delta átalakítás', steps, answers, values } };
+}
+
+/**
+ * Átalakítás és összevonás a t1–t2 kapcsok felől: indoklás, a delta / csillag kijelölése, képlet,
+ * az átalakított hálózat, majd soros-párhuzamos összevonás. A Thevenin belső ellenállásához is.
+ * `toDrawing`: a csomópontok visszavezetése a rajzra (ha a hálózatot átszámoztuk, pl. kiiktatott
+ * forrásoknál); `base`: minden lépés kiemelésébe kerül (pl. kiiktatott források, kapcsok).
+ */
+export function transformAndReduce(
+  rs: NetElement[],
+  nodeCount: number,
+  t1: number,
+  t2: number,
+  o: { prefer?: 'delta-csillag' | 'csillag-delta'; drawn: Set<string>; from: string; group: string; toDrawing?: (n: number) => number; base?: Highlight },
+): { steps: Step[]; red: Reduction; tr: Transform; all: NetElement[]; after: Highlight; filterH: (h: Highlight) => Highlight; removedIds: string[]; isDelta: boolean } | null {
+  const tr = findTransform(rs, nodeCount, t1, t2, o.prefer ?? 'delta-csillag') ?? findTransform(rs, nodeCount, t1, t2, o.prefer === 'delta-csillag' ? 'csillag-delta' : 'delta-csillag');
+  if (!tr) return null;
+  const draw = o.toDrawing ?? ((n: number) => n);
+  const base = o.base ?? {};
+  const removedIds = tr.removed.map((e) => e.id);
+  const isDelta = tr.kind === 'delta-csillag';
+  const newNames = isDelta ? ['R1', 'R2', 'R3'] : ['R12', 'R23', 'R31'];
+  const labels = tr.added.map((e, i) => `${newNames[i]} = ${formatQuantity(e.value, 'Ω', { sig: 3 })}`) as [string, string, string];
+  const drawTerminals = tr.terminals.map(draw) as [number, number, number];
+  const portLabels = drawTerminals.map((n, i) => ({ node: n, label: String(i + 1) }));
+  const after: Highlight = { ...base, dim: removedIds, transform: { kind: tr.kind, terminals: drawTerminals, labels }, nodeLabels: portLabels, terminals: true };
+  const filterH = (h: Highlight): Highlight => ({
+    ...h,
+    elements: h.elements?.filter((id) => o.drawn.has(id)),
+    groups: h.groups?.map((g) => ({ ...g, elements: g.elements.filter((id) => o.drawn.has(id)) })).filter((g) => g.elements.length),
+    arrows: h.arrows?.filter((a) => o.drawn.has(a.element)),
+  });
+  const steps: Step[] = [];
+  steps.push({
+    title: 'Miért kell átalakítás?',
+    text: `${o.from} felől nézve nincs két olyan ellenállás, amely sorosan (egymás után, elágazás nélkül) vagy párhuzamosan (ugyanazon két pont között) kapcsolódna: ez hídkapcsolás. Ezért ${isDelta ? 'egy háromszöget (deltát) csillaggá' : 'egy csillagot deltává'} alakítunk; utána már összevonható.`,
+    highlight: { ...base, terminals: true },
+    group: 'Átalakítás',
+  });
+  steps.push({
+    title: isDelta ? 'A delta és a három kivezetés' : 'A csillag és a három kivezetés',
+    text: isDelta
+      ? `${removedIds.join(', ')} háromszöget alkot az 1, 2, 3 csomópont között. Ezt cseréljük egy csillagra: három ellenállás, amely egy új, közös pontban találkozik. A kivezetések a helyükön maradnak.`
+      : `${removedIds.join(', ')} egy közös pontban (csillagpont) találkozik, a másik végük az 1, 2, 3 csomópont. Ezt cseréljük deltára: a csillagpont eltűnik, a kivezetések közé kerül egy-egy ellenállás.`,
+    highlight: { ...base, groups: [{ elements: removedIds, label: isDelta ? 'delta' : 'csillag', tone: 'transform' }], nodeLabels: portLabels, terminals: true },
+    group: 'Átalakítás',
+  });
+  const before = tr.removed.map((e) => e.value) as [number, number, number];
+  const afterVals = tr.added.map((e) => e.value) as [number, number, number];
+  steps.push(...formulaSteps(tr.kind, before, afterVals, { ...base, groups: [{ elements: removedIds, label: isDelta ? 'delta' : 'csillag', tone: 'transform' }], nodeLabels: portLabels }, 'Átalakítás'));
+  steps.push({
+    title: 'Az átalakított hálózat',
+    text: `A régi ${isDelta ? 'delta' : 'csillag'} helyére az új ${isDelta ? 'csillag' : 'delta'} kerül (az ábrán szaggatottan). A három kivezetés felől nézve semmi sem változott, ezért a hálózat többi része ugyanúgy viselkedik — és most már soros-párhuzamosan összevonható.`,
+    highlight: after,
+    group: 'Átalakítás',
+  });
+  const rest = rs.filter((e) => !removedIds.includes(e.id));
+  const all: NetElement[] = [...rest, ...tr.added];
+  const red = reduceSP(all, t1, t2);
+  if (!red) return null;
+  for (const st of reductionSteps(red)) steps.push({ ...st, highlight: filterH({ ...st.highlight, ...mergeAfter(st.highlight, after) }), group: o.group });
+  return { steps, red, tr, all, after, filterH, removedIds, isDelta };
 }
 
 /** Az átalakított állapot (új ágak, elhalványított régiek) hozzáadása egy lépés kiemeléséhez. */

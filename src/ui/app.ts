@@ -218,15 +218,16 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     if (settings.dailyActive) return toast('A napi kihívás feladatai ettől nem változnak; a csillag-delta a szabad gyakorlásra vonatkozik.');
     // Ugyanaz a feladat (ugyanaz a seed): bekapcsolva egy új ellenállás kerül bele, ami miatt átalakítás kell.
     if (v && settings.topic !== 'csillag-delta' && !STAR_DELTA_TOPICS.has(settings.topic)) {
-      toast('Ebben a témakörben nincs mit átalakítani. Csillag-delta az Eredő ellenállás, a Feszültség- és áramosztás és a Teljes hálózatanalízis feladataiba kerül.');
+      toast('Ebben a témakörben nincs mit átalakítani. Csillag-delta az Eredő ellenállás, a Feszültség- és áramosztás, a Teljes hálózatanalízis és a Thevenin feladataiba kerül.');
     }
-    if (v && STAR_DELTA_TOPICS.has(settings.topic)) update({ method: 'csillag-delta' });
+    // Theveninnél az átalakítás az Rth része, ott marad a Thevenin-módszer.
+    if (v && STAR_DELTA_TOPICS.has(settings.topic)) update({ method: settings.topic === 'thevenin' ? 'thevenin' : 'csillag-delta' });
     generate();
     if (v && STAR_DELTA_TOPICS.has(settings.topic) && problem) {
       try {
         const base = generateProblem({ seed, topic: settings.topic, level: settings.topic === 'zh' ? 'zh' : settings.level });
         if (base.attempts !== problem.attempts) toast('Ebbe a feladatba nem fért el a csillag-delta (túl kevés benne a csomópont), ezért egy hasonló, kicsit nagyobb feladatot kaptál.');
-        else toast('Bekerült egy új ellenállás: ettől a hálózat hidas lett, és csak csillag-delta átalakítással vonható össze.');
+        else toast(settings.topic === 'thevenin' ? 'Bekerült egy új ellenállás: a belső ellenállás (Rth) csak csillag-delta átalakítással számolható.' : 'Bekerült egy új ellenállás: ettől a hálózat hidas lett, és csak csillag-delta átalakítással vonható össze.');
       } catch {
         // Az összevetés csak tájékoztató.
       }

@@ -11,6 +11,7 @@ import { formatQuantity } from '../units';
 import { simplificationStep } from './common';
 import { solveAny } from './engine';
 import { nodalSteps } from './nodal';
+import { transformAndReduce } from './stardelta';
 import { groupOf, reduceSP, reductionSteps, rSym } from './reduction';
 import { texQty } from './tex';
 import type { MethodAnswer, MethodResult, Step } from './types';
@@ -99,7 +100,25 @@ export function solveThevenin(p: Problem): MethodResult {
     rs = rs.filter((e) => !zero.includes(e.id));
     red = reduceSP(rs, ka, kb);
   }
-  if (!red) return { ok: false, reason: 'Az Rth meghatározásához csillag-delta átalakítás kellene.' };
+  // Ha a kapcsok felől nem vonható össze (híd), csillag-delta átalakítással számolunk.
+  let sd: ReturnType<typeof transformAndReduce> = null;
+  if (!red) {
+    const back = new Map<number, number>();
+    for (const [orig, k] of nodeMap) if (!back.has(k)) back.set(k, orig);
+    const marks = [
+      ...net.elements.filter((e) => e.kind !== 'R').map((e) => ({ element: e.id, as: e.kind === 'V' ? ('short' as const) : ('open' as const) })),
+      { element: loadId, as: 'open' as const },
+    ];
+    sd = transformAndReduce(rs, killed.nodeCount, ka, kb, {
+      drawn: new Set(allElements(p.circuit).map((e) => e.id)),
+      from: 'Az A és B kapcsok',
+      group: 'Rth: belső ellenállás',
+      toDrawing: (n) => back.get(n) ?? n,
+      base: { killed: marks, terminals: true },
+    });
+    if (!sd) return { ok: false, reason: 'Az Rth meghatározásához egyetlen csillag-delta átalakítás nem elég.' };
+    red = sd.red;
+  }
   const Rth = red.root.R;
 
   // Uth és In csomóponti levezetéssel; B a referencia, így Uth = φA.
@@ -147,14 +166,16 @@ export function solveThevenin(p: Problem): MethodResult {
   }
   // Újrarajzoláshoz: a terhelés ága nélkül (az Rth a terhelés nélkül nézett eredő).
   const withoutLoad = { ...p.circuit, branches: p.circuit.branches.filter((b) => !b.elements.some((e) => e.id === load.id)) };
-  for (const st of reductionSteps(red, withoutLoad, { killed: killedMarks, terminals: true }))
-    steps.push({ ...st, highlight: { ...st.highlight, killed: killedMarks, terminals: true }, group: 'Rth: belső ellenállás' });
+  if (sd) steps.push(...sd.steps.map((st) => ({ ...st, group: st.group === 'Átalakítás' ? 'Rth: csillag-delta átalakítás' : st.group })));
+  else
+    for (const st of reductionSteps(red, withoutLoad, { killed: killedMarks, terminals: true }))
+      steps.push({ ...st, highlight: { ...st.highlight, killed: killedMarks, terminals: true }, group: 'Rth: belső ellenállás' });
   steps.push({
     title: 'Belső ellenállás',
     text: 'Az A–B kapcsok felől nézett eredő a helyettesítő generátor belső ellenállása.',
     terms: [`R_{th} = ${rSym(red.root)}`],
     result: { symbol: 'R_{th}', value: Rth, unit: 'Ω' },
-    highlight: { killed: killedMarks, groups: [groupOf(red.root, 'result')], terminals: true },
+    highlight: sd ? sd.filterH({ ...sd.after, killed: killedMarks, groups: [groupOf(red.root, 'result')] }) : { killed: killedMarks, groups: [groupOf(red.root, 'result')], terminals: true },
     group: 'Rth: belső ellenállás',
   });
   steps.push({

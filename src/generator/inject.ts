@@ -2,35 +2,45 @@
 // új ellenállással kötünk össze (kis kitérővel, így nem keresztez semmit). Ettől a hálózat hidassá
 // válik, és csak csillag-delta átalakítással vonható össze. A feladat többi része változatlan.
 
-import type { Circuit } from '../solver/model';
-import { toNetlist } from '../solver/netlist';
+import { allElements, type Circuit, type Netlist } from '../solver/model';
+import { killSources, removeElements, toNetlist } from '../solver/netlist';
 import { isSeriesParallelReducible, needsStarDeltaBetween } from '../simplify/seriesParallel';
 import { findTransform } from '../simplify/stardelta';
 import type { Rng } from './rng';
 import { finalize, makeElement } from './sketch';
 
-/** Ezekben a témakörökben van értelme (összevonással megoldott feladatok). */
-export const STAR_DELTA_TOPICS = new Set(['eredo', 'oszto', 'halozat']);
+/** Ezekben a témakörökben van értelme (összevonással megoldott feladatok, Theveninnél az Rth). */
+export const STAR_DELTA_TOPICS = new Set(['eredo', 'oszto', 'halozat', 'thevenin']);
 
-/** A kapcsok, ahonnan nézve a hálózatot össze kell vonni: a forrás két vége, vagy az A–B kapocspár. */
-function terminalsOf(c: Circuit): [number, number] | null {
+/**
+ * A hálózat, amit össze kell vonni, és a kapcsok, ahonnan nézzük: a forrás két vége, az A–B
+ * kapocspár, vagy (Thevenin) a terhelés két vége, a terhelés és a források nélkül (Rth).
+ */
+function viewOf(c: Circuit): { net: Netlist; t1: number; t2: number } | null {
   const map = toNetlist(c);
+  const load = allElements(c).find((e) => e.role === 'load' && e.kind === 'R');
+  if (load) {
+    const le = map.net.elements.find((e) => e.id === load.id)!;
+    const { net, nodeMap } = killSources(removeElements(map.net, [load.id]));
+    const t1 = nodeMap.get(le.a);
+    const t2 = nodeMap.get(le.b);
+    return t1 === undefined || t2 === undefined || t1 === t2 ? null : { net, t1, t2 };
+  }
   const src = map.net.elements.filter((e) => e.kind !== 'R');
-  if (src.length === 1) return [src[0]!.b, src[0]!.a];
-  if (src.length === 0 && c.terminals) return [map.pointNode.get(c.terminals.a)!, map.pointNode.get(c.terminals.b)!];
+  if (src.length === 1) return { net: map.net, t1: src[0]!.b, t2: src[0]!.a };
+  if (src.length === 0 && c.terminals) return { net: map.net, t1: map.pointNode.get(c.terminals.a)!, t2: map.pointNode.get(c.terminals.b)! };
   return null;
 }
 
 /** Kell-e (és elég-e egy) csillag-delta átalakítás az összevonáshoz. */
 export function needsOneTransform(c: Circuit, mode: 'delta-csillag' | 'csillag-delta'): boolean {
-  const t = terminalsOf(c);
-  if (!t) return false;
-  const net = toNetlist(c).net;
-  const rs = net.elements.filter((e) => e.kind === 'R');
+  const v = viewOf(c);
+  if (!v) return false;
+  const rs = v.net.elements.filter((e) => e.kind === 'R');
   if (rs.some((e) => e.a === e.b)) return false;
-  if (isSeriesParallelReducible(rs.map((e) => ({ a: e.a, b: e.b })), t[0], t[1])) return false;
-  if (!needsStarDeltaBetween(net, t[0], t[1])) return false;
-  return !!findTransform(rs, net.nodeCount, t[0], t[1], mode);
+  if (isSeriesParallelReducible(rs.map((e) => ({ a: e.a, b: e.b })), v.t1, v.t2)) return false;
+  if (!needsStarDeltaBetween(v.net, v.t1, v.t2)) return false;
+  return !!findTransform(rs, v.net.nodeCount, v.t1, v.t2, mode);
 }
 
 /**
@@ -39,7 +49,7 @@ export function needsOneTransform(c: Circuit, mode: 'delta-csillag' | 'csillag-d
  * csomópontot ad. null, ha így sem megy.
  */
 export function injectStarDelta(c: Circuit, rng: Rng, mode: 'delta-csillag' | 'csillag-delta'): Circuit | null {
-  if (!terminalsOf(c)) return null;
+  if (!viewOf(c)) return null;
   const once = injectOnce(c, rng, mode);
   if (once) return once;
   const values = c.branches.flatMap((b) => b.elements.filter((e) => e.kind === 'R').map((e) => e.value));
