@@ -6,8 +6,7 @@ import { valueLabel } from '../generator/questions';
 import { allElements } from '../solver/model';
 import { killSources, toNetlist } from '../solver/netlist';
 import { simplificationStep, targetResistors } from './common';
-import { solveAny, type Values } from './engine';
-import { nodalSteps } from './nodal';
+import type { Values } from './engine';
 import { singleSourceSteps } from './reduction';
 import { texElement, texOf, texQty } from './tex';
 import type { MethodAnswer, MethodResult, Step } from './types';
@@ -31,23 +30,14 @@ export function solveSuperposition(p: Problem): MethodResult {
   const partials: { source: string; values: Values; derivation: Step[]; dividers: boolean }[] = [];
   for (const s of sources) {
     const k = killSources(net, [s.id]);
-    // A kiiktatott feszültségforrás összevonja a csomópontokat: a levezetés kiemeléseit
-    // a rajz eredeti csomópontjaira vezetjük vissza.
-    const back = new Map<number, number>();
-    for (const [orig, nw] of k.nodeMap) if (!back.has(nw)) back.set(nw, orig);
     const others = sources.filter((x) => x.id !== s.id);
     const marks = others.map((x) => ({ element: x.id, as: x.kind === 'V' ? ('short' as const) : ('open' as const) }));
     const group = `Csak ${s.id} működik`;
-    // Elsősorban eredővel és osztókkal; csak ha a részáramkör nem soros-párhuzamos, akkor csomóponti módszerrel.
+    // Csak eredővel, feszültség- és áramosztással (így tanuljuk); ha egy részáramkör nem bontható
+    // soros-párhuzamos részekre, erre a feladatra a szuperpozíció nem való.
     const r = singleSourceSteps(k.net, targets, { group, base: { killed: marks }, circuit: p.circuit });
-    if (r) {
-      partials.push({ source: s.id, values: r.values, derivation: r.steps, dividers: true });
-      continue;
-    }
-    const d = nodalSteps(k.net, { toDrawing: (n) => back.get(n) ?? n, base: { killed: marks }, group });
-    const values = d?.values ?? solveAny(k.net);
-    if (!values) return { ok: false, reason: 'Egy részáramkör nem oldható meg.' };
-    partials.push({ source: s.id, values, derivation: d?.steps ?? [], dividers: false });
+    if (!r) return { ok: false, reason: `Csak ${s.id} működésekor a részáramkör nem bontható soros és párhuzamos részekre, így osztókkal nem oldható meg` };
+    partials.push({ source: s.id, values: r.values, derivation: r.steps, dividers: true });
   }
 
   const steps: Step[] = [];

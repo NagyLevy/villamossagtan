@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { superpositionByDividers } from '../methods/superposition';
 import { generateProblem, tooManySourcesInMesh, type GenerateOptions, type Problem, type Topic } from '../generator/generate';
 import { circuitIssues, geometryIssues, seriesSourcePairs } from '../generator/validate';
 import type { Level } from '../generator/values';
@@ -117,7 +118,9 @@ describe('nehézségi szintek méretei (többforrásos hálózatok)', () => {
     for (let i = 0; i < 50; i++) {
       const p = generateProblem({ seed: `H${i}`, topic: 'tobbforras', level: 'nehez' });
       const kinds = p.questions.map((q) => q.kind);
-      expect(kinds).toEqual(expect.arrayContaining(['I', 'P', 'Uth', 'Rth', 'In', 'IL', 'Isup']));
+      expect(kinds).toEqual(expect.arrayContaining(['I', 'P', 'Uth', 'Rth', 'In', 'IL']));
+      // A részáram (szuperpozíció) csak akkor kérdés, ha minden részáramkör osztókkal megoldható.
+      expect(kinds.includes('Isup')).toBe(superpositionByDividers(p));
     }
   });
 });

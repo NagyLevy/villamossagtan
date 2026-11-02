@@ -4,7 +4,8 @@
 import { contribution, fundamentalLoops, equivalentResistance, meshCount, solve, theveninAt, type RealSolution } from '../solver/analysis';
 import type { Circuit, CircuitElement } from '../solver/model';
 import { allElements } from '../solver/model';
-import { toNetlist, type NetlistMapping } from '../solver/netlist';
+import { killSources, toNetlist, type NetlistMapping } from '../solver/netlist';
+import { singleSourceSteps } from '../methods/reduction';
 import { isSeriesParallelReducible, needsStarDeltaBetween, singleSourceNeedsStarDelta } from '../simplify/seriesParallel';
 import { deltaToStar, findTransform, niceStars, starToDelta, type Star } from '../simplify/stardelta';
 import { formatQuantity, isNiceValue } from '../units';
@@ -527,6 +528,10 @@ function hardQuestionSet(ctx: Ctx, target: CircuitElement): Question[] | null {
   if (!part) return null;
   const Ipart = part.elements.get(target.id)!.I;
   if (Math.abs(Ipart) < EPS) return null;
+  // A részáramot csak akkor kérdezzük, ha minden részáramkör eredővel és osztókkal megoldható
+  // (a szuperpozíciót így tanuljuk: csomóponti módszer nélkül).
+  const byDividers = sources.every((x) => singleSourceSteps(killSources(map.net, [x.id]).net, [], {}) !== null);
+  if (!byDividers) return qs;
   qs.push({
     id: questionId(),
     kind: 'Isup',
