@@ -93,3 +93,53 @@ export function streakAt(data: ProgressData, key: string, taskCount: (day: strin
 export function streak(data: ProgressData, today: Date, taskCount: (day: string, lvl: DailyLevel) => number): number {
   return streakAt(data, dayKey(today), taskCount);
 }
+
+// ───────── fiókhoz kötés ─────────
+
+const OWNER_KEY = 'villamossagtan.daily.owner';
+
+/** Kié a gépen tárolt haladás (fiók-azonosító), vagy null, ha vendégé. */
+export function progressOwner(): string | null {
+  try {
+    return localStorage.getItem(OWNER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Két napló összefésülése: feladatonként a megoldott (vagy korábban megnyitott) rekord marad. */
+export function mergeProgress(a: ProgressData, b: ProgressData): ProgressData {
+  const out: ProgressData = JSON.parse(JSON.stringify(a)) as ProgressData;
+  for (const [day, levels] of Object.entries(b))
+    for (const [lvl, tasks] of Object.entries(levels ?? {}) as [DailyLevel, Record<string, TaskRecord>][])
+      for (const [task, r] of Object.entries(tasks ?? {})) {
+        const l = ((out[day] ??= {})[lvl] ??= {});
+        const mine = l[task];
+        if (!mine || (!mine.solvedAt && r.solvedAt) || (!!mine.solvedAt === !!r.solvedAt && r.opened < mine.opened)) l[task] = r;
+      }
+  return out;
+}
+
+/** Belépés után: a fiók haladása kerül a gépre (vendég-haladás összefésülve, másik fióké eldobva). */
+export function adoptProgress(owner: string, server: ProgressData): ProgressData {
+  const prev = progressOwner();
+  const local = loadProgress();
+  const data = prev === owner || prev === null ? mergeProgress(server, local) : server;
+  save(data);
+  try {
+    localStorage.setItem(OWNER_KEY, owner);
+  } catch {
+    // A tárolás nem kötelező.
+  }
+  return data;
+}
+
+/** Kilépéskor a gépről törlődik a haladás (a fiókban megmarad). */
+export function clearProgress(): void {
+  save({});
+  try {
+    localStorage.removeItem(OWNER_KEY);
+  } catch {
+    // A tárolás nem kötelező.
+  }
+}

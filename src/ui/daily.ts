@@ -70,7 +70,7 @@ export function dailyBanner(level: DailyLevel, onLevel: (l: DailyLevel) => void,
   const countdown = h('span', { class: 'daily-count num' });
   const live = h('div', { class: 'daily-live num', attrs: { 'aria-live': 'off' } });
   let last: { c: DailyChallenge; current: number } | null = null;
-  let online: OnlineState = { status: 'off', myId: null, players: [], updated: 0 };
+  let online: OnlineState = { status: 'off', user: null, players: [], updated: 0 };
   onOnline((st) => {
     const changed = st.status !== online.status || st.updated !== online.updated;
     online = st;
@@ -142,7 +142,7 @@ export function dailyBanner(level: DailyLevel, onLevel: (l: DailyLevel) => void,
   const leaderboard = (c: DailyChallenge) => {
     const league = loadLeague();
     const live = online.status === 'online';
-    const me = { ...mePlayer(), ...(live && online.myId ? { id: online.myId } : {}) };
+    const me = { ...mePlayer(), ...(live && online.user ? { id: online.user.id, name: online.user.username } : {}) };
     const others = live ? online.players.filter((p) => p.id !== me.id) : league.friends;
     const rows = [me, ...others]
       .map((p) => ({ p, s: scoreOf(p.data) }))
@@ -231,8 +231,8 @@ export function dailyBanner(level: DailyLevel, onLevel: (l: DailyLevel) => void,
           ),
         ),
       ),
-      h('p', { class: `league-status ${live ? 'is-live' : ''}`, text: onlineText(online, !!league.me.name) }),
-      live ? h('div', { class: 'league-actions' }, nameInput) : h('div', { class: 'league-actions' }, nameInput, button('Meghívó link másolása', copy(true), 'primary'), button('Csak a kód', copy(false), 'quiet')),
+      h('p', { class: `league-status ${live ? 'is-live' : ''}`, text: onlineText(online, !!online.user) }),
+      live ? null : h('div', { class: 'league-actions' }, nameInput, button('Meghívó link másolása', copy(true), 'primary'), button('Csak a kód', copy(false), 'quiet')),
       live ? null : h('div', { class: 'league-actions' }, codeInput, button('Hozzáadás', add, 'secondary')),
       h('p', {
         class: 'step-note',
@@ -246,7 +246,7 @@ export function dailyBanner(level: DailyLevel, onLevel: (l: DailyLevel) => void,
   const render = (c: DailyChallenge, current: number) => {
     last = { c, current };
     const data = loadProgress();
-    publish(loadLeague().me.name, data);
+    publish(data);
     const res = data[c.day]?.[c.level] ?? {};
     const doneCount = c.tasks.filter((t) => res[t.id]?.solvedAt).length;
     const allDone = doneCount === c.tasks.length;
@@ -313,7 +313,7 @@ export function dailyBanner(level: DailyLevel, onLevel: (l: DailyLevel) => void,
         ? h('p', { class: 'daily-done', text: 'Kész a mai kihívás. Szép munka! Holnap 00:00-kor jön az új; addig próbáld ki egy nehezebb fokozaton is (a nap a legjobb fokozatod pontját kapja).' })
         : h('div', { class: 'daily-tips' }, h('p', {}, h('strong', { text: 'Tipp ehhez a feladathoz: ' }), task.tip), h('p', {}, h('strong', { text: 'A nap tudnivalója: ' }), c.studyTip)),
       box('ach', `Achievementek (${score.achievements.length}/${ACHIEVEMENTS.length})`, achievementGrid(score)),
-      box('league', online.status === 'online' ? `Élő ranglista (${online.players.filter((p) => p.id !== online.myId).length + 1} játékos)` : 'Ranglista és pontozás', leaderboard(c), scoringHelp()),
+      box('league', online.status === 'online' ? `Élő ranglista (${online.players.filter((p) => p.id !== online.user?.id).length + 1} játékos)` : 'Ranglista és pontozás', leaderboard(c), scoringHelp()),
     );
     levelSeg.set(c.level);
     tick();
@@ -331,7 +331,7 @@ export function dailyBanner(level: DailyLevel, onLevel: (l: DailyLevel) => void,
 function onlineText(st: OnlineState, hasName: boolean): string {
   if (st.status === 'online') {
     const t = new Date(st.updated || Date.now()).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' });
-    return hasName ? `● Élő · frissítve ${t}` : '● Élő · adj meg egy becenevet, hogy felkerülj a ranglistára';
+    return hasName ? `● Élő · frissítve ${t}` : '● Élő · lépj be, hogy felkerülj a ranglistára';
   }
   if (st.status === 'connecting') return 'Kapcsolódás a ranglistához…';
   if (st.status === 'error') return `Az élő ranglista nem érhető el (${st.error ?? 'hálózati hiba'}). Addig pontkóddal is összemérhetitek magatokat.`;

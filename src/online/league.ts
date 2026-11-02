@@ -1,7 +1,9 @@
-// Élő ranglista a Supabase-en. Mindenki névtelenül lép be (a böngésző kap egy azonosítót),
-// és csak a saját sorát írhatja (ezt az adatbázis szabályai kényszerítik ki). A sorban a
+// Fiókok és élő ranglista a Supabase-en. Belépés felhasználónévvel és jelszóval: a Supabase
+// e-mail-címet vár, ezért a névből egy ál-címet képzünk (a név bájtjai hexában, így ékezetes
+// név is mehet). A haladás a fiókhoz tartozik: belépéskor letöltjük, változáskor feltöltjük.
+// Mindenki csak a saját sorát írhatja (az adatbázis szabályai kényszerítik ki). A sorban a
 // napló van, nem a pont: a pontot mindenki gépe maga számolja újra, a `sanitize` szűrésével.
-// Ha a szerver nem érhető el (pl. a claude.ai-os változatban), a ranglista pontkóddal működik tovább.
+// Ha a szerver nem érhető el (pl. a claude.ai-os változatban), az app belépés nélkül, pontkóddal megy.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ProgressData } from '../daily/progress';
@@ -10,20 +12,24 @@ import { packData, sanitize, type PlayerScore } from '../daily/share';
 /** A projekt címe és a nyilvános (publishable) kulcs: ezek a weboldal kódjában szabadon látszhatnak. */
 const SUPABASE_URL = 'https://pueqrnspglrxajjcmhez.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_LF_-PmOLoVRVom068TQkfA_kkwTPIJm';
+const EMAIL_DOMAIN = 'villamossagtan.app';
+
+export interface Account {
+  id: string;
+  username: string;
+}
 
 export interface OnlineState {
   status: 'off' | 'connecting' | 'online' | 'error';
-  /** A saját névtelen azonosítóm (a ranglistán így ismerem fel magam). */
-  myId: string | null;
+  user: Account | null;
   players: PlayerScore[];
   /** Az utolsó sikeres frissítés ideje (ms). */
   updated: number;
   error?: string;
 }
 
-const state: OnlineState = { status: 'off', myId: null, players: [], updated: 0 };
+const state: OnlineState = { status: 'off', user: null, players: [], updated: 0 };
 const listeners = new Set<(s: OnlineState) => void>();
-let client: SupabaseClient | null = null;
 let ready: Promise<SupabaseClient | null> | null = null;
 
 const emit = () => listeners.forEach((f) => f({ ...state }));
@@ -35,21 +41,40 @@ function fail(e: unknown): null {
   return null;
 }
 
-/** Kapcsolódás és névtelen belépés (egyszer; a munkamenet a böngészőben megmarad). */
-function connect(): Promise<SupabaseClient | null> {
+/** Felhasználónév: 3–20 betű, szám, pont, kötőjel vagy aláhúzás (ékezet is lehet). */
+export const USERNAME_RULE = /^[\p{L}\p{N}_.-]{3,20}$/u;
+
+export function normalizeUsername(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function emailOf(username: string): string {
+  const hex = [...new TextEncoder().encode(normalizeUsername(username))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `u${hex}@${EMAIL_DOMAIN}`;
+}
+
+function accountOf(user: { id: string; user_metadata?: Record<string, unknown> } | null | undefined): Account | null {
+  if (!user) return null;
+  const name = user.user_metadata?.['username'];
+  return { id: user.id, username: typeof name === 'string' ? name : 'névtelen' };
+}
+
+/** Kapcsolódás (egyszer); a meglévő belépés a böngészőben megmarad. */
+export function connect(): Promise<SupabaseClient | null> {
   ready ??= (async () => {
     state.status = 'connecting';
     emit();
     try {
       const { createClient } = await import('@supabase/supabase-js');
-      client = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'villamossagtan.auth' } });
-      let { data } = await client.auth.getSession();
-      if (!data.session) {
-        const r = await client.auth.signInAnonymously();
-        if (r.error) throw r.error;
-        data = { session: r.data.session };
-      }
-      state.myId = data.session?.user.id ?? null;
+      const client = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'villamossagtan.auth' } });
+      // Elérhető-e a szerver (a claude.ai-os keret például minden külső kérést letilt).
+      const probe = await client.from('players').select('id').limit(1);
+      if (probe.error) throw probe.error;
+      const { data, error } = await client.auth.getSession();
+      if (error) throw error;
+      // Ha a tárolt munkamenet névtelen (régi változat), kiléptetjük.
+      if (data.session?.user.is_anonymous) await client.auth.signOut();
+      else state.user = accountOf(data.session?.user);
       state.status = 'online';
       emit();
       return client;
@@ -59,6 +84,64 @@ function connect(): Promise<SupabaseClient | null> {
     }
   })();
   return ready;
+}
+
+/** Hibaüzenetek magyarul. */
+function authError(e: { message?: string; code?: string } | null): string {
+  const m = `${e?.code ?? ''} ${e?.message ?? ''}`.toLowerCase();
+  if (m.includes('invalid login') || m.includes('invalid_credentials')) return 'Hibás felhasználónév vagy jelszó.';
+  if (m.includes('already registered') || m.includes('user_already_exists')) return 'Ez a felhasználónév már foglalt.';
+  if (m.includes('weak_password') || m.includes('at least')) return 'Túl gyenge jelszó: legalább 6 karakter legyen.';
+  if (m.includes('not confirmed')) return 'A fiók nincs megerősítve: a Supabase-ben ki kell kapcsolni az e-mail-megerősítést.';
+  if (m.includes('signups not allowed') || m.includes('signup_disabled') || m.includes('email_provider_disabled')) return 'A regisztráció ki van kapcsolva a Supabase-ben (Email szolgáltató).';
+  if (m.includes('rate limit')) return 'Túl sok próbálkozás, várj egy percet.';
+  if (m.includes('fetch') || m.includes('network')) return 'Nincs kapcsolat a szerverrel.';
+  return e?.message ?? 'Ismeretlen hiba.';
+}
+
+export type AuthResult = { ok: true; account: Account } | { ok: false; error: string };
+
+export async function signUp(username: string, password: string): Promise<AuthResult> {
+  const name = normalizeUsername(username);
+  if (!USERNAME_RULE.test(name)) return { ok: false, error: 'A felhasználónév 3–20 karakter: betű, szám, pont, kötőjel vagy aláhúzás.' };
+  if (password.length < 6) return { ok: false, error: 'A jelszó legalább 6 karakter legyen.' };
+  const c = await connect();
+  if (!c) return { ok: false, error: 'Nincs kapcsolat a szerverrel.' };
+  const { data, error } = await c.auth.signUp({ email: emailOf(name), password, options: { data: { username: name } } });
+  if (error) return { ok: false, error: authError(error) };
+  if (!data.session) return { ok: false, error: authError({ message: 'not confirmed' }) };
+  state.user = accountOf(data.user);
+  emit();
+  return { ok: true, account: state.user! };
+}
+
+export async function signIn(username: string, password: string): Promise<AuthResult> {
+  const name = normalizeUsername(username);
+  if (!name || !password) return { ok: false, error: 'Add meg a felhasználónevet és a jelszót.' };
+  const c = await connect();
+  if (!c) return { ok: false, error: 'Nincs kapcsolat a szerverrel.' };
+  const { data, error } = await c.auth.signInWithPassword({ email: emailOf(name), password });
+  if (error) return { ok: false, error: authError(error) };
+  state.user = accountOf(data.user);
+  emit();
+  return { ok: true, account: state.user! };
+}
+
+export async function signOut(): Promise<void> {
+  const c = await connect();
+  await c?.auth.signOut();
+  state.user = null;
+  lastSent = '';
+  emit();
+}
+
+/** A saját, szerveren tárolt haladásom (belépéskor ebből töltjük vissza). */
+export async function loadMine(): Promise<ProgressData | null> {
+  const c = await connect();
+  if (!c || !state.user) return null;
+  const { data, error } = await c.from('players').select('data').eq('id', state.user.id).maybeSingle();
+  if (error) return fail(error);
+  return data ? sanitize((data as { data: unknown }).data, Date.now()).data : {};
 }
 
 /** Az összes játékos letöltése (a pontot a hívó számolja a naplóból). */
@@ -80,23 +163,28 @@ export async function refresh(): Promise<void> {
 let lastSent = '';
 let timer = 0;
 
-/** A saját napló feltöltése (késleltetve, és csak ha változott). Becenév nélkül nem tölt fel. */
-export function publish(name: string, data: ProgressData): void {
-  if (!name) return;
-  const body = JSON.stringify({ name, d: packData(data) });
+/** A saját napló feltöltése (késleltetve, és csak ha változott). Belépés nélkül nem tölt fel. */
+export function publish(data: ProgressData): void {
+  const user = state.user;
+  if (!user) return;
+  const body = JSON.stringify({ u: user.id, d: packData(data) });
   if (body === lastSent) return;
   clearTimeout(timer);
   timer = window.setTimeout(async () => {
     const c = await connect();
-    if (!c || !state.myId) return;
-    const { error } = await c.from('players').upsert({ id: state.myId, name: name.slice(0, 24), data: packData(data), updated_at: new Date().toISOString() });
+    if (!c || state.user?.id !== user.id) return;
+    const { error } = await c.from('players').upsert({ id: user.id, name: user.username.slice(0, 24), data: packData(data), updated_at: new Date().toISOString() });
     if (error) return void fail(error);
     lastSent = body;
     await refresh();
   }, 1500);
 }
 
-/** Feliratkozás az állapotra; az első feliratkozó elindítja a kapcsolódást és a percenkénti frissítést. */
+export function onlineState(): OnlineState {
+  return { ...state };
+}
+
+/** Feliratkozás az állapotra; az első feliratkozó elindítja a percenkénti frissítést. */
 export function onOnline(f: (s: OnlineState) => void): () => void {
   listeners.add(f);
   f({ ...state });

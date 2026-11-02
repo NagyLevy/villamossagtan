@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayDone, streak, type ProgressData } from '../daily/progress';
+import { dayDone, mergeProgress, streak, type ProgressData } from '../daily/progress';
 import { BASE_POINTS, formatCompact, formatMult, hypeMultiplier, penalty, taskPoints, timeMultiplier, type TaskRecord } from '../daily/score';
 import { TASK_MULT, fullScore, type Step } from '../daily/achievements';
 import { addFriend, decodeScore, encodeScore, type League } from '../daily/share';
@@ -196,5 +196,18 @@ describe('pontkód', () => {
     l = addFriend(l, { name: 'Én', id: 'me', at: 4, data: {}, dropped: 0 });
     expect(l.friends).toHaveLength(1);
     expect(l.friends[0]!.at).toBe(3);
+  });
+});
+
+describe('fiókhoz kötött haladás', () => {
+  it('összefésüléskor a megoldott, illetve a korábban megnyitott rekord marad', () => {
+    const r = (opened: number, solvedAt?: number): TaskRecord => ({ opened, ...(solvedAt ? { solvedAt } : {}), wrong: 0, tips: 0, trick: false, solution: false });
+    const server: ProgressData = { '2026-11-02': { kozepes: { a: r(100, 200), b: r(300) } } };
+    const local: ProgressData = { '2026-11-02': { kozepes: { a: r(50), b: r(250, 400), c: r(10) } } };
+    const m = mergeProgress(server, local);
+    expect(m['2026-11-02']!.kozepes!.a!.solvedAt).toBe(200);
+    expect(m['2026-11-02']!.kozepes!.b!.solvedAt).toBe(400);
+    expect(m['2026-11-02']!.kozepes!.c!.opened).toBe(10);
+    expect(server['2026-11-02']!.kozepes!.c).toBeUndefined();
   });
 });

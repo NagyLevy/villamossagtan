@@ -23,6 +23,7 @@ import { dailyChallenge, dayKey } from '../daily/schedule';
 import { loadProgress, openTask, recordEvent, type TaskEvent } from '../daily/progress';
 import { PAR_MINUTES } from '../daily/score';
 import { dailyBanner } from './daily';
+import type { Account } from '../online/league';
 import { button, iconButton, segmented, select, slider, stepBar, toast, toggle, type SegmentOption } from './components';
 import { h, icon, ICONS } from './dom';
 import { FlowAnimator } from './flow';
@@ -33,8 +34,18 @@ import { stepList, type StepList } from './steps';
 const THEME_NEXT: Record<ThemeChoice, ThemeChoice> = { system: 'light', light: 'dark', dark: 'system' };
 const THEME_LABEL: Record<ThemeChoice, string> = { system: 'Színmód: rendszer', light: 'Színmód: világos', dark: 'Színmód: sötét' };
 
-export function startApp(root: HTMLElement): void {
+/** Kivel fut az app: belépett fiók, vendég (csak gyakorlás), vagy szerver nélkül (pontkódos ranglista). */
+export interface AppSession {
+  account: Account | null;
+  mode: 'online' | 'guest' | 'offline';
+  onLogin(): void;
+  onLogout(): void;
+}
+
+export function startApp(root: HTMLElement, session: AppSession = { account: null, mode: 'offline', onLogin: () => {}, onLogout: () => {} }): void {
   const settings = loadSettings();
+  // Vendégként nincs napi kihívás (az a fiókhoz kötött).
+  if (session.mode === 'guest') settings.dailyActive = false;
   let seed = randomSeed();
   let problem: Problem | null = null;
   let solution: Solution | null = null;
@@ -160,7 +171,17 @@ export function startApp(root: HTMLElement): void {
     if (on) generate();
     else newProblem();
   };
-  const dailyBtn = iconButton('Napi kihívás', ICONS.calendar, () => setDaily(!settings.dailyActive));
+  const dailyBtn = iconButton('Napi kihívás', ICONS.calendar, () => (session.mode === 'guest' ? session.onLogin() : setDaily(!settings.dailyActive)));
+  const accountEl = session.account
+    ? h(
+        'div',
+        { class: 'account' },
+        h('span', { class: 'account-name', attrs: { title: 'Belépve' }, text: session.account.username }),
+        button('Kilépés', session.onLogout, 'quiet'),
+      )
+    : session.mode === 'guest'
+      ? button('Belépés', session.onLogin, 'secondary')
+      : null;
   dailyBtn.setAttribute('aria-pressed', String(settings.dailyActive));
   // Éjfélkor új napi kihívás.
   window.setInterval(() => {
@@ -229,7 +250,7 @@ export function startApp(root: HTMLElement): void {
       'Villamosságtan',
     ),
     methodSeg.el,
-    h('div', { class: 'toolbar-group' }, dailyBtn, topicSel.el, levelSel.el, sdToggle.el, sdMode.el, statsBtn, themeBtn),
+    h('div', { class: 'toolbar-group' }, dailyBtn, topicSel.el, levelSel.el, sdToggle.el, sdMode.el, statsBtn, themeBtn, accountEl),
   );
 
   // ───────── Feladatfej ─────────
