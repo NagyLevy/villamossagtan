@@ -2946,3 +2946,10 @@ html.lite .fx-value.is-final {
     text-align: center;
   }
 }
+
+.problem-meta .new-problem {
+  margin-left: auto;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 650;
+}

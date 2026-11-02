@@ -70,6 +70,49 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
 
   // ───────── Eszköztár ─────────
 
+  /** Melyik témakörben van biztosan ehhez a módszerhez illő feladat. */
+  const METHOD_TOPIC: Record<MethodId, Topic> = {
+    redukcio: 'eredo',
+    kirchhoff: 'kirchhoff',
+    hurokaram: 'tobbforras',
+    szuperpozicio: 'tobbforras',
+    thevenin: 'thevenin',
+    'csillag-delta': 'csillag-delta',
+    csomoponti: 'tobbforras',
+  };
+
+  /** A választott módszer nem illik a feladathoz: új feladatot hozunk, amit ezzel a módszerrel lehet megoldani. */
+  const switchToMethod = (m: MethodId) => {
+    const why = problem ? solveWith(problem, m) : null;
+    const reason = why && !why.ok ? why.reason : '';
+    const level = settings.topic === 'zh' ? 'zh' : settings.level;
+    // Előbb a mostani témakörben próbálkozunk, aztán abban, ahol ez a módszer biztosan használható.
+    for (const topic of [settings.topic, METHOD_TOPIC[m]]) {
+      for (let i = 0; i < 25; i++) {
+        const s = randomSeed();
+        try {
+          const p = generateProblem({ seed: s, topic, level: topic === 'zh' ? 'zh' : level === 'zh' ? 'nehez' : level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode });
+          if (!applicableMethods(p).includes(m)) continue;
+          if (topic !== settings.topic) {
+            update({ topic });
+            topicSel.setOptions(topicOptions(), topic);
+            syncLevel();
+          }
+          update({ method: m });
+          methodSeg.set(m);
+          seed = s;
+          generate();
+          toast(`Ehhez a feladathoz nem jó ez a módszer${reason ? ` (${reason.replace(/\.$/, '')})` : ''}, ezért hoztam egy újat, amihez igen.`);
+          return;
+        } catch {
+          // Ez a seed nem adott érvényes feladatot: jöhet a következő.
+        }
+      }
+    }
+    methodSeg.set(settings.method);
+    toast('Nem találtam ehhez a módszerhez illő feladatot ebben a témakörben.');
+  };
+
   /** Vizsga mód (beadás után ellenőrzés): csak a napi kihíváson kívül. */
   const isExam = () => settings.mode === 'vizsga' && !settings.dailyActive;
   /** Napi kihívásban a feladat módszere kötött (pl. a szuperpozíciós héten mindig szuperpozíció). */
@@ -88,6 +131,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
       toast(`A napi kihívásban ez a feladat ${methodList(settings.starDelta).find((m) => m.id === locked)?.label ?? locked} módszerrel megy`);
       return;
     }
+    if (problem && !settings.dailyActive && !applicableMethods(problem).includes(v)) return switchToMethod(v);
     update({ method: v });
     solveCurrent();
   });
@@ -136,14 +180,23 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     'sm',
   );
   sdMode.el.hidden = !settings.starDelta;
+  let topicBeforeSd: Topic = settings.topic === 'csillag-delta' ? 'eredo' : settings.topic;
   const sdToggle = toggle('Csillag-delta', settings.starDelta, (v) => {
     update({ starDelta: v });
     sdMode.el.hidden = !v;
+    // Bekapcsolva csillag-delta átalakítást igénylő feladatok jönnek; kikapcsolva vissza az előző témakörre.
+    if (v && settings.topic !== 'csillag-delta') {
+      topicBeforeSd = settings.topic;
+      update({ topic: 'csillag-delta' });
+    }
     if (!v && settings.method === 'csillag-delta') update({ method: 'redukcio' });
-    if (!v && settings.topic === 'csillag-delta') update({ topic: 'oszto' });
+    if (!v && settings.topic === 'csillag-delta') update({ topic: topicBeforeSd });
     topicSel.setOptions(topicOptions(), settings.topic);
     methodSeg.setOptions(methodOptions(), settings.method);
-    newProblem();
+    syncLevel();
+    // A napi kihívást a kapcsoló nem érinti (annak a feladatai mindenkinél ugyanazok).
+    if (!settings.dailyActive) newProblem();
+    else toast('A napi kihívás feladatai ettől nem változnak; a csillag-delta a szabad gyakorlásra vonatkozik.');
   });
 
   const statsBtn = iconButton('Statisztika', ICONS.stats, () => openStats());
@@ -302,7 +355,11 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
   );
   const metaText = h('span');
   const title = h('h1', { class: 'problem-title' });
-  const head = h('div', { class: 'problem-head enter' }, h('div', { class: 'problem-meta' }, metaText, seedField), title);
+  // Új feladat (szabad gyakorlásnál; a napi kihívás feladatai rögzítettek).
+  const newBtn = button('Új feladat', () => newProblem(), 'secondary');
+  newBtn.classList.add('new-problem');
+  newBtn.title = 'Új feladat ugyanebből a témakörből (N)';
+  const head = h('div', { class: 'problem-head enter' }, h('div', { class: 'problem-meta' }, metaText, seedField, newBtn), title);
 
   // ───────── Vászon ─────────
 
@@ -894,6 +951,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
       return;
     }
     seedInput.value = seed;
+    newBtn.hidden = settings.dailyActive;
     reverse = false;
     revealed = 0;
     showAll = false;
