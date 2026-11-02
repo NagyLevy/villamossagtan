@@ -29,6 +29,7 @@ import { MIN_SOLVE_MS } from '../daily/share';
 import { dailyBanner } from './daily';
 import { dailyProblem } from '../daily/problem';
 import type { Account } from '../online/league';
+import { allElements } from '../solver/model';
 import { button, iconButton, segmented, select, slider, stepBar, toast, toggle, type SegmentOption } from './components';
 import { h, icon, ICONS } from './dom';
 import { FlowAnimator } from './flow';
@@ -433,7 +434,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
   /** A vásznon látható áramkör: a feladaté, vagy a lépés saját áramköre (pl. helyettesítő kép). */
   let shownCircuit: Circuit | null = null;
   const flow = new FlowAnimator();
-  const showCircuit = (c: Circuit) => {
+  const showCircuit = (c: Circuit, merged = false) => {
     if (c === shownCircuit) return;
     shownCircuit = c;
     layout = computeLayout(c);
@@ -441,15 +442,64 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     canvas.innerHTML = renderCircuitSvg(c, { title: title.textContent ?? 'Áramkör' }, layout);
     flow.attach(canvas.querySelector('svg')!);
     canvas.classList.remove('swap');
+    // Összeolvadás után nincs áttűnés: a rajz a helyén marad, csak a megmaradt elem villan fel.
+    if (merged) return;
     void canvas.offsetWidth;
     canvas.classList.add('swap');
   };
 
+  /** Folyamatban lévő összeolvadás-animáció (gyors léptetésnél megszakítjuk). */
+  let pendingMerge = 0;
+
+  /**
+   * Összeolvadás: a régi rajzon az eltűnő ellenállások odacsúsznak a megmaradóhoz, összezsugorodnak
+   * és elhalványulnak; utána jön az új rajz. true, ha az animáció elindult (a lépés később rajzolódik).
+   */
+  const mergeInto = (next: Circuit, keep: string | undefined, then: () => void): boolean => {
+    const svg = canvas.querySelector('svg');
+    if (!svg || !keep || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
+    const keepG = svg.querySelector<SVGGElement>(`.el[data-id="${keep}"]`);
+    const stay = new Set(allElements(next).map((e) => e.id));
+    const gone = [...svg.querySelectorAll<SVGGElement>('.el')].filter((g) => !stay.has(g.dataset.id!));
+    if (!keepG || gone.length === 0) return false;
+    const kb = keepG.getBBox();
+    const kc = { x: kb.x + kb.width / 2, y: kb.y + kb.height / 2 };
+    keepG.classList.add('merge-target');
+    for (const g of gone) {
+      const b = g.getBBox();
+      g.classList.add('merging');
+      g.style.transform = `translate(${kc.x - (b.x + b.width / 2)}px, ${kc.y - (b.y + b.height / 2)}px) scale(0.35)`;
+      g.style.opacity = '0';
+    }
+    pendingMerge = window.setTimeout(() => {
+      pendingMerge = 0;
+      then();
+    }, 650);
+    return true;
+  };
+
   const applyHighlight = (index: number) => {
+    window.clearTimeout(pendingMerge);
+    pendingMerge = 0;
     const step = solution?.steps[index];
     // Áramkör újrarajzolása (csak ha be van kapcsolva): az összevonás utáni, egyszerűsített rajz.
     const rd = settings.redraw && !step?.circuit ? step?.redraw : undefined;
-    if (problem) showCircuit(step?.circuit ?? rd?.circuit ?? problem.circuit);
+    const next = problem ? (step?.circuit ?? rd?.circuit ?? problem.circuit) : null;
+    // Előre lépve az összevont ellenállások "összeolvadnak", mielőtt az új rajz megjelenik.
+    if (rd && next && next !== shownCircuit && index > lastIndex) {
+      const keep = rd.highlight.elements?.[0];
+      lastIndex = index;
+      if (mergeInto(next, keep, () => drawStep(index, keep))) return;
+    }
+    lastIndex = index;
+    drawStep(index);
+  };
+  let lastIndex = -1;
+
+  const drawStep = (index: number, popId?: string) => {
+    const step = solution?.steps[index];
+    const rd = settings.redraw && !step?.circuit ? step?.redraw : undefined;
+    if (problem) showCircuit(step?.circuit ?? rd?.circuit ?? problem.circuit, !!popId);
     const svg = canvas.querySelector('svg');
     if (!svg || !overlayCtx) return;
     const hl = rd?.highlight ?? step?.highlight ?? {};
@@ -477,6 +527,8 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     if (shownCircuit && layout) flow.set(flowSegments(shownCircuit, layout, stateCurrents(shownCircuit, hl)));
     // Kamera: finoman ráközelít a lépés fókuszára.
     moveCamera(svg, focusBox(overlayCtx, hl));
+    // Az összeolvadásból megmaradt elem felvillan az új értékével.
+    if (popId) svg.querySelector(`.el[data-id="${popId}"]`)?.classList.add('merge-pop');
   };
 
   /** A nézet (viewBox) rugalmas animálása a fókusz köré; ha nincs fókusz, a teljes ábra. */
@@ -1004,6 +1056,7 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     newBtn.hidden = settings.dailyActive;
     reverse = false;
     revealed = 0;
+    lastIndex = -1;
     showAll = false;
     submitted = false;
     trickText = '';
