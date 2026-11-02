@@ -57,9 +57,24 @@ export function startApp(root: HTMLElement): void {
 
   // ───────── Eszköztár ─────────
 
+  /** Vizsga mód (beadás után ellenőrzés): csak a napi kihíváson kívül. */
+  const isExam = () => settings.mode === 'vizsga' && !settings.dailyActive;
+  /** Napi kihívásban a feladat módszere kötött (pl. a szuperpozíciós héten mindig szuperpozíció). */
+  const lockedMethod = (): MethodId | null => {
+    if (!settings.dailyActive) return null;
+    const c = dailyChallenge(new Date(), settings.dailyLevel);
+    return c.tasks[Math.min(dailyIndex, c.tasks.length - 1)]?.method ?? null;
+  };
+
   const methodOptions = (): SegmentOption<MethodId>[] => methodList(settings.starDelta).map((m) => ({ value: m.id, label: m.label, badge: m.badge }));
   if (!methodOptions().some((o) => o.value === settings.method)) settings.method = 'redukcio';
   const methodSeg = segmented<MethodId>('Módszer', methodOptions(), settings.method, (v) => {
+    const locked = lockedMethod();
+    if (locked && v !== locked) {
+      methodSeg.set(locked);
+      toast(`A napi kihívásban ez a feladat ${methodList(settings.starDelta).find((m) => m.id === locked)?.label ?? locked} módszerrel megy`);
+      return;
+    }
     update({ method: v });
     solveCurrent();
   });
@@ -385,7 +400,7 @@ export function startApp(root: HTMLElement): void {
   const recorded = new Set<string>();
   const timerEl = h('span', { class: 'timer num', attrs: { 'aria-live': 'off' } });
   window.setInterval(() => {
-    if (settings.mode !== 'vizsga' || submitted || !settings.examTimer) return;
+    if (!isExam() || submitted || !settings.examTimer) return;
     const s = Math.floor((performance.now() - examStart) / 1000);
     timerEl.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   }, 500);
@@ -421,7 +436,7 @@ export function startApp(root: HTMLElement): void {
   const answersSection = () => {
     if (!problem) return h('div');
     submitters = [];
-    const exam = settings.mode === 'vizsga';
+    const exam = isExam();
     const parts = problem.questions.map((q, i) => {
       if (q.kind === 'table') return tableSection(q.id);
       const verdict = h('div', { class: 'verdict', attrs: { 'aria-live': 'polite' } });
@@ -474,7 +489,7 @@ export function startApp(root: HTMLElement): void {
           });
           input.value = typed.get(id) ?? '';
           const st = cellState.get(id);
-          if (st && !(settings.mode === 'vizsga' && !submitted)) input.classList.add(st);
+          if (st && !(isExam() && !submitted)) input.classList.add(st);
           cells.push({ input, target: t, key });
           return h('td', {}, input);
         }),
@@ -502,11 +517,11 @@ export function startApp(root: HTMLElement): void {
       if (filled === cells.length) record(ok === cells.length, qid);
     };
     const prevSummary = summaries.get(qid);
-    if (prevSummary && !(settings.mode === 'vizsga' && !submitted)) {
+    if (prevSummary && !(isExam() && !submitted)) {
       summary.className = prevSummary.cls;
       summary.textContent = prevSummary.text;
     }
-    if (settings.mode === 'vizsga') submitters.push(check);
+    if (isExam()) submitters.push(check);
     return h(
       'div',
       { class: 'question' },
@@ -516,7 +531,7 @@ export function startApp(root: HTMLElement): void {
         { class: 'table-wrap' },
         h('table', { class: 'value-table fill-table' }, h('thead', {}, h('tr', {}, h('th', { text: 'Elem' }), h('th', { text: 'U' }), h('th', { text: 'I' }), h('th', { text: 'P' }))), h('tbody', {}, ...targets.map(row))),
       ),
-      settings.mode === 'vizsga' ? null : h('div', { class: 'answer-row' }, button('Táblázat ellenőrzése', check, 'primary')),
+      isExam() ? null : h('div', { class: 'answer-row' }, button('Táblázat ellenőrzése', check, 'primary')),
       summary,
     );
   };
@@ -548,10 +563,10 @@ export function startApp(root: HTMLElement): void {
   const solutionControls = (): HTMLElement | null => {
     if (!solution) return null;
     const total = solution.steps.length;
-    if (settings.mode === 'vizsga' && !submitted) {
+    if (isExam() && !submitted) {
       return h('p', { class: 'panel-empty' }, 'Vizsga mód: a megoldás a beadás után látható. Írd be a válaszaidat, aztán add be.');
     }
-    if (settings.mode === 'vizsga' || revealed >= total) return null;
+    if (isExam() || revealed >= total) return null;
     const tip = button(revealed === 0 ? 'Tipp: első lépés' : 'Tipp: következő lépés', () => reveal(revealed + 1), 'secondary');
     const all = button('Teljes megoldás', () => reveal(total), 'primary');
     const trick = button(
@@ -640,16 +655,16 @@ export function startApp(root: HTMLElement): void {
     const modeRow = h(
       'div',
       { class: 'mode-row' },
-      modeSeg.el,
-      settings.mode === 'vizsga'
+      settings.dailyActive ? h('span', { class: 'mode-daily', text: 'Napi kihívás: azonnali ellenőrzés, pontozással' }) : modeSeg.el,
+      isExam()
         ? toggle('Időmérő', settings.examTimer, (v) => {
             update({ examTimer: v });
             timerEl.textContent = v ? timerEl.textContent : '';
           }).el
         : null,
-      settings.mode === 'vizsga' && settings.examTimer ? timerEl : null,
+      isExam() && settings.examTimer ? timerEl : null,
       h('span', { class: 'spacer' }),
-      !(settings.mode === 'vizsga' && !submitted)
+      !(isExam() && !submitted)
         ? button(
             verifyOpen ? 'Ellenőrzés elrejtése' : 'Ellenőrző nézet',
             () => {
@@ -713,7 +728,7 @@ export function startApp(root: HTMLElement): void {
       ...extras,
       ...(body ? [body] : []),
       ...(controls ? [controls] : []),
-      ...(verifyOpen && problem && !(settings.mode === 'vizsga' && !submitted) ? [verifyView()] : []),
+      ...(verifyOpen && problem && !(isExam() && !submitted) ? [verifyView()] : []),
       ...(chart ? [chart] : []),
       answersSection(),
     );
@@ -786,8 +801,13 @@ export function startApp(root: HTMLElement): void {
   const solveCurrent = () => {
     if (!problem) return;
     const usable = applicableMethods(problem);
-    // Ha a választott módszer nem illik a feladathoz, de van más, arra váltunk.
-    if (!usable.includes(settings.method) && usable.length) {
+    const locked = lockedMethod();
+    if (locked && settings.method !== locked) {
+      update({ method: locked });
+      methodSeg.set(locked);
+    }
+    // Ha a választott módszer nem illik a feladathoz, de van más, arra váltunk (napi módban nem).
+    if (!locked && !usable.includes(settings.method) && usable.length) {
       update({ method: usable[0]! });
       methodSeg.set(usable[0]!);
     }
@@ -795,7 +815,7 @@ export function startApp(root: HTMLElement): void {
     const r = solveWith(problem, settings.method, { reverse, prefer });
     solution = r.ok ? r.solution : null;
     const reasonText = r.ok ? undefined : usable.length ? r.reason : 'Ehhez a feladathoz nincs alkalmazható módszer.';
-    const alternatives = usable.filter((m) => m !== settings.method);
+    const alternatives = locked ? [] : usable.filter((m) => m !== settings.method);
     // Ha már minden látszott (vagy beadták), módszerváltáskor is minden látszik.
     if (solution && (showAll || submitted)) revealed = solution.steps.length;
     else revealed = Math.min(revealed, solution?.steps.length ?? 0);
@@ -842,7 +862,7 @@ export function startApp(root: HTMLElement): void {
     cellState.clear();
     summaries.clear();
     examStart = performance.now();
-    timerEl.textContent = settings.mode === 'vizsga' && settings.examTimer ? '00:00' : '';
+    timerEl.textContent = isExam() && settings.examTimer ? '00:00' : '';
     const p = problem;
     const parts = [TOPIC_NAMES[p.topic], LEVEL_NAMES[p.level], p.topology === 'egyedi' ? null : TOPOLOGY_NAMES[p.topology], `${p.stats.sources} forrás`, `${p.stats.resistors} ellenállás`];
     metaText.textContent = parts.filter(Boolean).join(' · ');
@@ -870,7 +890,7 @@ export function startApp(root: HTMLElement): void {
         dailyIndex = (dailyIndex + 1) % len;
         generate();
       } else newProblem();
-    } else if (e.key === 'm' || e.key === 'M') {
+    } else if ((e.key === 'm' || e.key === 'M') && !lockedMethod()) {
       e.preventDefault();
       const opts = methodOptions();
       const i = opts.findIndex((o) => o.value === settings.method);
