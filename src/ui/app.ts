@@ -208,7 +208,10 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     'sm',
   );
   sdMode.el.hidden = !settings.starDelta;
+  /** A kapcsoló két állásának utolsó feladata: visszakapcsoláskor ez jön vissza (nem új, véletlen feladat). */
+  const sdMemory: Partial<Record<'on' | 'off', { seed: string; topic: Topic; method: MethodId; level: Level }>> = {};
   const sdToggle = toggle('Csillag-delta', settings.starDelta, (v) => {
+    const leaving = { seed, topic: settings.topic, method: settings.method, level: settings.level };
     update({ starDelta: v });
     sdMode.el.hidden = !v;
     if (!v && settings.method === 'csillag-delta') update({ method: 'redukcio' });
@@ -218,6 +221,19 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     syncLevel();
     // A napi kihívást a kapcsoló nem érinti (annak a feladatai mindenkinél ugyanazok).
     if (settings.dailyActive) return toast('A napi kihívás feladatai ettől nem változnak; a csillag-delta a szabad gyakorlásra vonatkozik.');
+    // Megjegyezzük, honnan jöttünk; ha ebben az állásban volt már feladat (ugyanazon a szinten), az jön vissza.
+    sdMemory[v ? 'off' : 'on'] = leaving;
+    const back = sdMemory[v ? 'on' : 'off'];
+    if (back && back.level === settings.level) {
+      update({ topic: back.topic, method: back.method });
+      topicSel.setOptions(topicOptions(), back.topic);
+      methodSeg.setOptions(methodOptions(), back.method);
+      syncLevel();
+      seed = back.seed;
+      generate();
+      toast(v ? 'Visszakaptad az előző csillag-deltás feladatot.' : 'Visszakaptad az előző feladatot (csillag-delta nélkül).');
+      return;
+    }
     // Szuperpozíciónál a részáramkörök összevonásában kell az átalakítás: ehhez illő (új) feladat jön.
     if (settings.method === 'szuperpozicio' && (settings.topic === 'tobbforras' || settings.topic === 'zh')) {
       if (switchToMethod('szuperpozicio'))
