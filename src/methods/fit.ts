@@ -23,14 +23,17 @@ export interface Fit {
 
 const eq = (n: number) => (n === 0 ? 'egyenletrendszer nélkül' : `${n} egyenlet`);
 
-/** Illik-e a feladat a módszerhez úgy, hogy azzal a legkönnyebb. */
-export function methodFit(m: MethodId, p: Problem): Fit {
+/**
+ * Illik-e a feladat a módszerhez úgy, hogy azzal a legkönnyebb. `relaxed`: a hurokáram és a
+ * csomóponti potenciál között a döntetlen is elég (ha szigorúan kevesebb egyenlet nem található).
+ */
+export function methodFit(m: MethodId, p: Problem, relaxed = false): Fit {
   const usable = applicableMethods(p);
   if (!usable.includes(m)) return { ok: false, why: '' };
   const sources = p.stats.sources;
   switch (m) {
     case 'redukcio':
-      return { ok: sources <= 1, why: 'Egy forrás, soros-párhuzamos hálózat: elég összevonni és osztani.' };
+      return { ok: sources <= 1, why: sources === 0 ? 'Soros-párhuzamos hálózat: elég lépésenként összevonni.' : 'Egy forrás, soros-párhuzamos hálózat: elég összevonni és osztani.' };
     case 'kirchhoff':
       return { ok: p.topic === 'kirchhoff', why: 'Egyetlen csomóponti vagy huroktörvény elég hozzá.' };
     case 'thevenin':
@@ -48,8 +51,11 @@ export function methodFit(m: MethodId, p: Problem): Fit {
       if (sources < 2) return { ok: false, why: '' };
       const h = systemSize(solveWith(p, 'hurokaram'));
       const c = systemSize(solveWith(p, 'csomoponti'));
-      const ok = m === 'hurokaram' ? h < c : c < h;
-      return { ok, why: `Hurokárammal ${eq(h)}, csomóponti potenciállal ${eq(c)}.` };
+      const [mine, other] = m === 'hurokaram' ? [h, c] : [c, h];
+      const ok = mine < other || (relaxed && mine === other && mine >= 1);
+      const name = m === 'hurokaram' ? 'Hurokárammal' : 'Csomóponti potenciállal';
+      const otherName = m === 'hurokaram' ? 'csomóponti potenciállal' : 'hurokárammal';
+      return { ok, why: mine < other ? `${name} ${eq(mine)}, ${otherName} ${eq(other)}: így a legrövidebb.` : `${name} ${eq(mine)}, ${otherName} is ${eq(other)}: itt egyformán jó, gyakorold így.` };
     }
   }
 }

@@ -2953,3 +2953,10 @@ html.lite .fx-value.is-final {
   font-size: 13px;
   font-weight: 650;
 }
+
+.method-fit {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--result);
+}

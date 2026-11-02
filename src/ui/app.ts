@@ -8,6 +8,7 @@ import { STAR_DELTA_TOPICS } from '../generator/inject';
 import { TOPOLOGY_NAMES } from '../generator/templates';
 import { LEVEL_NAMES, type Level } from '../generator/values';
 import { applicableMethods, solveWith, type Solution } from '../methods';
+import { methodFit } from '../methods/fit';
 import { computeLayout, type Layout } from '../render/layout';
 import { flowSegments, stateCurrents } from '../render/flow';
 import { focusBox, overlaySvg, type OverlayContext } from '../render/overlay';
@@ -84,35 +85,56 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
   };
 
   /** A választott módszer nem illik a feladathoz: új feladatot hozunk, amit ezzel a módszerrel lehet megoldani. */
-  const switchToMethod = (m: MethodId) => {
-    const why = problem ? solveWith(problem, m) : null;
-    const reason = why && !why.ok ? why.reason : '';
-    const level = settings.topic === 'zh' ? 'zh' : settings.level;
-    // Előbb a mostani témakörben próbálkozunk, aztán abban, ahol ez a módszer biztosan használható.
-    for (const topic of [settings.topic, METHOD_TOPIC[m]]) {
-      for (let i = 0; i < 25; i++) {
-        const s = randomSeed();
-        try {
-          const p = generateProblem({ seed: s, topic, level: topic === 'zh' ? 'zh' : level === 'zh' ? 'nehez' : level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode });
-          if (!applicableMethods(p).includes(m)) continue;
-          if (topic !== settings.topic) {
-            update({ topic });
-            topicSel.setOptions(topicOptions(), topic);
-            syncLevel();
+  /** Mely témakörök tartoznak egy módszerhez (ezekben maradhatunk módszerváltáskor). */
+  const METHOD_FAMILY: Record<MethodId, Topic[]> = {
+    redukcio: ['eredo', 'oszto', 'halozat', 'valodi-gen', 'ohm'],
+    kirchhoff: ['kirchhoff'],
+    hurokaram: ['tobbforras', 'zh'],
+    szuperpozicio: ['tobbforras', 'zh'],
+    thevenin: ['thevenin'],
+    'csillag-delta': ['csillag-delta', 'eredo', 'oszto', 'halozat'],
+    csomoponti: ['tobbforras', 'zh'],
+  };
+
+  /**
+   * A módszerhez illő feladat keresése (amit azzal a legkönnyebb megoldani). Előbb szigorúan
+   * (kevesebb egyenlet, mint más módszerrel), aztán engedékenyebben (legalább annyira könnyű).
+   */
+  const findFor = (m: MethodId, topics: Topic[]): { seed: string; topic: Topic } | null => {
+    const level = settings.level;
+    for (const relaxed of [false, true])
+      for (const topic of topics)
+        for (let i = 0; i < (relaxed ? 30 : 45); i++) {
+          const s = randomSeed();
+          try {
+            const p = generateProblem({ seed: s, topic, level: topic === 'zh' ? 'zh' : level === 'zh' ? 'nehez' : level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode });
+            if (methodFit(m, p, relaxed).ok) return { seed: s, topic };
+          } catch {
+            // Ez a seed nem adott érvényes feladatot: jöhet a következő.
           }
-          update({ method: m });
-          methodSeg.set(m);
-          seed = s;
-          generate();
-          toast(`Ehhez a feladathoz nem jó ez a módszer${reason ? ` (${reason.replace(/\.$/, '')})` : ''}, ezért hoztam egy újat, amihez igen.`);
-          return;
-        } catch {
-          // Ez a seed nem adott érvényes feladatot: jöhet a következő.
         }
-      }
+    return null;
+  };
+
+  /** Módszerfül: új feladat, amit ezzel a módszerrel a legkönnyebb megoldani. */
+  const switchToMethod = (m: MethodId) => {
+    // A mostani témakörben csak akkor maradunk, ha az a módszerhez tartozik.
+    const family = METHOD_FAMILY[m].includes(settings.topic) ? [settings.topic] : [];
+    const found = findFor(m, [...new Set([...family, METHOD_TOPIC[m]])]);
+    if (!found) {
+      methodSeg.set(settings.method);
+      toast('Nem találtam ehhez a módszerhez illő feladatot ezen a szinten.');
+      return;
     }
-    methodSeg.set(settings.method);
-    toast('Nem találtam ehhez a módszerhez illő feladatot ebben a témakörben.');
+    if (found.topic !== settings.topic) {
+      update({ topic: found.topic });
+      topicSel.setOptions(topicOptions(), found.topic);
+      syncLevel();
+    }
+    update({ method: m });
+    methodSeg.set(m);
+    seed = found.seed;
+    generate();
   };
 
   /** Vizsga mód (beadás után ellenőrzés): csak a napi kihíváson kívül. */
@@ -133,7 +155,8 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
       toast(`A napi kihívásban ez a feladat ${methodList(settings.starDelta).find((m) => m.id === locked)?.label ?? locked} módszerrel megy`);
       return;
     }
-    if (problem && !settings.dailyActive && !applicableMethods(problem).includes(v)) return switchToMethod(v);
+    // Szabad gyakorlásnál minden módszerfül saját, hozzáillő feladatot hoz.
+    if (!settings.dailyActive) return switchToMethod(v);
     update({ method: v });
     solveCurrent();
   });
@@ -372,7 +395,8 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
   const newBtn = button('Új feladat', () => newProblem(), 'secondary');
   newBtn.classList.add('new-problem');
   newBtn.title = 'Új feladat ugyanebből a témakörből (N)';
-  const head = h('div', { class: 'problem-head enter' }, h('div', { class: 'problem-meta' }, metaText, seedField, newBtn), title);
+  const fitText = h('p', { class: 'method-fit' });
+  const head = h('div', { class: 'problem-head enter' }, h('div', { class: 'problem-meta' }, metaText, seedField, newBtn), title, fitText);
 
   // ───────── Vászon ─────────
 
@@ -983,6 +1007,9 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
     const p = problem;
     const parts = [TOPIC_NAMES[p.topic], LEVEL_NAMES[p.level], p.topology === 'egyedi' ? null : TOPOLOGY_NAMES[p.topology], `${p.stats.sources} forrás`, `${p.stats.resistors} ellenállás`];
     metaText.textContent = parts.filter(Boolean).join(' · ');
+    const fit = settings.dailyActive ? null : methodFit(settings.method, p, true);
+    fitText.textContent = fit?.ok && fit.why ? fit.why : '';
+    fitText.hidden = !fitText.textContent;
     title.textContent = p.questions.length === 1 ? p.questions[0]!.text : `${TOPIC_NAMES[p.topic]}: ${p.questions.length} részkérdés`;
     shownCircuit = null;
     showCircuit(p.circuit);
@@ -991,7 +1018,8 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
   };
 
   const newProblem = () => {
-    seed = randomSeed();
+    const found = settings.dailyActive ? null : findFor(settings.method, [settings.topic]);
+    seed = found?.seed ?? randomSeed();
     generate();
   };
 
