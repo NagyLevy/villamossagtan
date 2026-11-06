@@ -49,6 +49,12 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   potenciál felé; áramforrás: tömör hegy az áram irányába). Lásd `src/render/svg.ts`.
 - **Soha nincs két forrás sorosan** (sem egy ágon belül, sem egy olyan csomóponton át, ahol csak két
   forrás találkozik): `seriesSourcePairs` (`validate.ts`).
+- **Átívelő ágak, mint a ZH-rajzokon:** a többforrásos, Thevenin-, Kirchhoff- és ZH-feladatok egy
+  részében a váz fölött vagy alatt egy külön ág ível át (pl. felül a teljes szélességben egy R6),
+  az eredő/osztó feladatokban néha egy sínszakasz fölött „púp” (azzal párhuzamos, így soros-párhuzamos
+  marad). `addBypass`, `randomBypass` (`templates.ts`).
+- **Csillag-delta** külön témakörként is választható (beállítás nélkül), a napi sorban is van, és a
+  próbavizsga Thevenin-feladatában is előfordul.
 - **Egy hurokban (ablakban) legfeljebb egy forrás**, minden szinten, a ZH-n is (a közös ágon lévő
   forrás mindkét ablakba számít): `tooManySourcesInMesh` (`generate.ts`).
 

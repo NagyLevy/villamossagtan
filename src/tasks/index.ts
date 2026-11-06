@@ -75,6 +75,7 @@ export const DC_TOPICS: TopicInfo[] = [
   { id: 'valodi-gen', name: TOPIC_NAMES['valodi-gen'], hint: 'belső ellenállás, terhelés' },
   { id: 'thevenin', name: TOPIC_NAMES.thevenin, hint: 'helyettesítő generátor' },
   { id: 'tobbforras', name: TOPIC_NAMES.tobbforras, hint: 'hurokáram, csomóponti, szuperpozíció' },
+  { id: 'csillag-delta', name: TOPIC_NAMES['csillag-delta'], hint: 'Δ ↔ Y átalakítás, hidas hálózatok' },
   { id: 'zh', name: TOPIC_NAMES.zh, hint: 'nagy hálózat, ZH-méret' },
 ];
 
@@ -119,7 +120,7 @@ export function examTasks(kind: ExamKind, seed: string): Task[] {
       dc(1, 'zh', 'zh'),
       dc(2, 'oszto', 'kozepes'),
       dc(3, 'ohm', 'nehez'),
-      dc(4, 'thevenin', 'kozepes'),
+      dc(4, 'thevenin', 'kozepes', rng.chance(0.4)),
     ];
   if (kind === 'ac')
     return [

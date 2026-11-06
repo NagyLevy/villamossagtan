@@ -24,7 +24,7 @@ import {
 import { injectStarDelta, STAR_DELTA_TOPICS } from './inject';
 import { Rng } from './rng';
 import { makeElement, Sketch, type Slot, type SlotRole } from './sketch';
-import { bridge, gridCellsOf, ladder, meshOptions, realSource, singleLoop, skeletonFor, type Topology } from './templates';
+import { addBypass, bridge, gridCellsOf, ladder, meshOptions, realSource, singleLoop, skeletonFor, type Topology } from './templates';
 import { meshes } from '../methods/engine';
 import { circuitIssues, seriesSourcePairs } from './validate';
 import { pickI, pickOhmR, pickR, pickV, POWER_RATINGS, type Level } from './values';
@@ -234,6 +234,19 @@ function spLadder(cells: number, nR: number, level: Level, rng: Rng): Sketch | n
   const s = ladder(cells, { openFirstRung: true });
   const spec: FillSpec = { nR, nV: 0, nI: 0, level, allowSourceOnly: false, sourceWeights: {} };
   if (!fillSlots(s.slots, spec, rng)) return null;
+  // Néha egy ellenállás "púpként" átível egy kitöltött sínszakasz fölött vagy alatt: azzal
+  // párhuzamos, így a hálózat továbbra is soros-párhuzamosan összevonható.
+  if (rng.chance(0.3)) {
+    const rails = s.slots.filter((x) => (x.role === 'rail-top' || x.role === 'rail-bottom') && x.branch.elements.length > 0);
+    if (rails.length) {
+      const r = rng.pick(rails);
+      const pos = new Map(s.points.map((p) => [p.id, p]));
+      const a = pos.get(r.branch.from)!;
+      const b = pos.get(r.branch.to)!;
+      const hump = addBypass(s, r.role === 'rail-top' ? 'top' : 'bottom', a.x, b.x);
+      hump.branch.elements = [makeElement('R', pickR(rng, level))];
+    }
+  }
   return s;
 }
 
@@ -439,7 +452,8 @@ function buildMulti(level: Level, o: GenerateOptions, rng: Rng, minSources = 1):
   const z = MULTI[sizeLevel(level)];
   const pick = chooseTopology(o, z.meshes, rng, ['letra', 'racs', 'gyuru', 'hid']);
   if (!pick) return null;
-  const sk = skeletonFor(pick.t, pick.m, rng);
+  // Az esetek egy részében a váz fölött vagy alatt átívelő ág is van (mint a ZH-rajzokon).
+  const sk = skeletonFor(pick.t, pick.m, rng, rng.chance(0.4));
   if (!sk) return null;
   const total = Math.max(minSources, o.sourceCount ?? rng.int(z.sources[0], z.sources[1]));
   const { nV, nI } = splitSources(total, o.sourceMix ?? 'vegyes', rng);
@@ -691,7 +705,7 @@ function zhManySources(o: GenerateOptions, rng: Rng): Draft | null {
   const t: Topology = forced ?? (rng.chance(0.7) ? 'letra' : 'racs');
   // Hurkonként legfeljebb egy forrás: több ablak, hogy a feladat nehéz maradjon.
   const m = t === 'racs' ? 6 : t === 'letra' ? rng.int(5, 6) : rng.pick(meshOptions(t));
-  const sk = skeletonFor(t, m, rng);
+  const sk = skeletonFor(t, m, rng, t === 'letra' && rng.chance(0.45));
   if (!sk) return null;
   const nI = rng.int(1, 2);
   const nV = rng.int(2, 3);

@@ -255,6 +255,11 @@ export class TaskViewer {
     return scoreTask(t, this.answers);
   }
 
+  /** Csillag-delta elérhető-e ennél a feladatnál (beállítás, vagy a feladat maga csillag-deltás). */
+  private sdOn(): boolean {
+    return this.hooks.settings().starDelta || !!this.task?.dc?.starDelta || this.task?.dc?.topic === 'csillag-delta';
+  }
+
   // ───────── Megoldás ─────────
 
   private solveCurrent(): void {
@@ -264,7 +269,7 @@ export class TaskViewer {
     this.reason = '';
     if (t.dc) {
       const usable = applicableMethods(t.dc);
-      if (!this.lockedMethod && !usable.includes(this.method) && usable.length) this.method = this.hooks.settings().starDelta && usable.includes('csillag-delta') ? 'csillag-delta' : usable[0]!;
+      if (!this.lockedMethod && !usable.includes(this.method) && usable.length) this.method = this.sdOn() && usable.includes('csillag-delta') ? 'csillag-delta' : usable[0]!;
       const s = this.hooks.settings();
       const prefer = s.starDeltaMode === 'veletlen' ? undefined : s.starDeltaMode;
       const r = solveWith(t.dc, this.method, { reverse: this.reverse, prefer });
@@ -319,7 +324,7 @@ export class TaskViewer {
 
     if (t.dc && !testHidden) {
       // Módszerválasztó: egy legördülő a sok fül helyett.
-      const opts = methodList(this.hooks.settings().starDelta).map((m) => ({ value: m.id, label: m.label }));
+      const opts = methodList(this.sdOn()).map((m) => ({ value: m.id, label: m.label }));
       const sel = select<MethodId>('Megoldási módszer', opts, this.method, (v) => {
         if (this.hooks.onMethodPick && this.mode === 'practice') this.hooks.onMethodPick(v);
         else this.setMethod(v);
@@ -394,7 +399,7 @@ export class TaskViewer {
       ? button(
           'Trükk-tipp',
           () => {
-            this.trickText = trickHint(t.dc!, this.hooks.settings().starDelta);
+            this.trickText = trickHint(t.dc!, this.sdOn());
             this.renderPanel();
           },
           'quiet',

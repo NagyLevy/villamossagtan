@@ -163,6 +163,8 @@ export function gridCellsOf(sketch: Sketch): (s: Slot) => string[] {
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
   const pos = new Map(sketch.points.map((p) => [p.id, p]));
   return (s) => {
+    // Az átívelő ág saját ablakot zár (a váz széle és közte).
+    if (s === sketch.bypass) return ['ativelo'];
     const a = pos.get(s.branch.from)!;
     const b = pos.get(s.branch.to)!;
     const out: string[] = [];
@@ -177,6 +179,37 @@ export function gridCellsOf(sketch: Sketch): (s: Slot) => string[] {
     }
     return out;
   };
+}
+
+/**
+ * Átívelő ág (a ZH-rajzok kedvelt eleme): a váz fölött vagy alatt egy külön ág, amely két, egymástól
+ * legalább egy cellányira lévő külső pontot köt össze (pl. a teljes szélességben felül egy R6).
+ * Új hurkot ad: a meglévő váz `meshes − 1` hurkával együtt `meshes` lesz.
+ */
+export function addBypass(s: Sketch, side: 'top' | 'bottom', x1: number, x2: number): Slot {
+  const ys = s.points.map((p) => p.y);
+  const edge = side === 'top' ? Math.min(...ys) : Math.max(...ys);
+  const out = side === 'top' ? edge - S : edge + S;
+  s.wire(x1, edge, x1, out);
+  s.wire(x2, edge, x2, out);
+  const slot = s.slot(x1, out, x2, out, side === 'top' ? 'rail-top' : 'rail-bottom', true, 2);
+  s.bypass = slot;
+  return slot;
+}
+
+/** Véletlen átívelő ág a váz szélességéből: többnyire teljes szélességű, néha csak egy része. */
+export function randomBypass(s: Sketch, rng: Rng): Slot {
+  const xs = s.points.map((p) => p.x);
+  const [x0, xn] = [Math.min(...xs), Math.max(...xs)];
+  const cols = (xn - x0) / S;
+  let a = x0;
+  let b = xn;
+  if (cols >= 3 && rng.chance(0.4)) {
+    const span = rng.int(2, cols - 1);
+    a = x0 + rng.int(0, cols - span) * S;
+    b = a + span * S;
+  }
+  return addBypass(s, rng.chance(0.55) ? 'top' : 'bottom', a, b);
 }
 
 /** Lehetséges hurokszámok topológiánként (a generátor ebből választ). */
@@ -194,8 +227,17 @@ export function meshOptions(t: Topology): number[] {
   }
 }
 
-/** A sablon váza adott hurokszámra (a soros-párhuzamosat a generátor külön építi). */
-export function skeletonFor(t: Topology, meshes: number, rng: Rng): Sketch | null {
+/**
+ * A sablon váza adott hurokszámra (a soros-párhuzamosat a generátor külön építi). `bypass` esetén
+ * egy hurokkal kisebb váz készül, és fölé vagy alá egy átívelő ág kerül.
+ */
+export function skeletonFor(t: Topology, meshes: number, rng: Rng, bypass = false): Sketch | null {
+  if (bypass && t !== 'hid' && meshes >= 3) {
+    const base = t === 'racs' ? (meshes - 1 >= 4 && (meshes - 1) % 2 === 0 ? grid(2, (meshes - 1) / 2) : grid(1, meshes - 1)) : skeletonFor(t, meshes - 1, rng);
+    if (!base) return null;
+    randomBypass(base, rng);
+    return base;
+  }
   switch (t) {
     case 'soros-parhuzamos':
     case 'letra':

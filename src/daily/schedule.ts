@@ -82,6 +82,7 @@ const TIPS: Record<string, string> = {
   kirchhoff: 'Csomópont: a kifolyó áramok előjeles összege nulla. Hurok: körbeérve a feszültségek előjeles összege nulla. Figyelj a referenciairányokra!',
   hurokaram: 'Ablakonként egy hurokáram, mind ugyanabba az irányba. Közös ágban a két hurokáram különbsége folyik. Áramforrásnál kötött hurok vagy szuperhurok.',
   csomoponti: 'Válassz referenciát (0 V), a feszültségforrással rögzített csomópontokat írd fel előre. Minden ismeretlen csomópontra: kifolyó áramok összege nulla.',
+  csillagdelta: 'Delta → csillag: R1 = R12·R13 / (R12 + R23 + R31), a két szomszédos delta-ellenállás szorzata per a három összege. Csillag → delta: R12 = R1 + R2 + R1·R2/R3. Átalakítás után már soros-párhuzamosan összevonható.',
   thevenin: 'Rth: források kiiktatva, A–B felől az eredő. Uth: üresjárás. In: rövidzár. Ellenőrzés: Uth = Rth · In.',
   impedancia: 'Előbb minden tekercs és kondenzátor impedanciáját írd fel (jωL, −j/(ωC)), aztán ugyanúgy vonj össze, mint ellenállásokkal, csak komplex számokkal.',
   fazor: 'Osztóknál a komplex számok arányával szorozz. Szorzásnál az abszolút értékek szorzódnak, a szögek összeadódnak; osztásnál a szögek kivonódnak.',
@@ -139,6 +140,7 @@ export function dailyChallenge(date: Date, lvl: DailyLevel, domain: Domain = 'dc
     { id: 'csomoponti', title: 'Csomóponti potenciál', topic: 'tobbforras', method: 'csomoponti', basic: false, tip: TIPS.csomoponti! },
     { id: 'szuperpozicio', title: 'Szuperpozíció', topic: 'tobbforras', method: 'szuperpozicio', basic: false, tip: TIPS.szuperpozicio! },
     { id: 'thevenin', title: 'Thevenin és Norton', topic: 'thevenin', method: 'thevenin', basic: true, tip: TIPS.thevenin! },
+    { id: 'csillag-delta', title: 'Csillag-delta', topic: 'csillag-delta', method: 'csillag-delta', basic: true, tip: TIPS.csillagdelta! },
   ];
   const tasks: DailyTask[] = mixed.map((m, i) => {
     const level = dcLevel(lvl, m.basic);
