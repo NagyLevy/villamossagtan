@@ -53,8 +53,16 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   részében a váz fölött vagy alatt egy külön ág ível át (pl. felül a teljes szélességben egy R6),
   az eredő/osztó feladatokban néha egy sínszakasz fölött „púp” (azzal párhuzamos, így soros-párhuzamos
   marad). `addBypass`, `randomBypass` (`templates.ts`).
+- **Keresztbe (átlósan, 45°-ban) kötött ellenállás** a többforrásos, Thevenin-, Kirchhoff- és ZH-feladatok
+  kb. 15%-ában egy ép rácscellában (`addDiagonal`, `templates.ts`); az átívelő ág kb. 10–20%-ban. Nem
+  minden feladatban, csak néhányban. A rajz (`layout.ts`, `svg.ts`) és az ellenőrzés (`validate.ts`)
+  kezeli az átlós ágat.
 - **Csillag-delta** külön témakörként is választható (beállítás nélkül), a napi sorban is van, és a
-  próbavizsga Thevenin-feladatában is előfordul.
+  próbavizsga Thevenin-feladatában is előfordul. A Beállítások kapcsolójával a többi témakörbe is
+  bekerülhet, de bekapcsolva is csak a feladatok kb. harmadába.
+- **A váltóáramú rész egyelőre zárva** (`AC_ENABLED = false`, `src/ui/app.ts`): a fül szürke,
+  „Hamarosan” felirattal, a szinuszos és vegyes próbavizsga sem indítható. A kód kész és tesztelt
+  (`ac.test.ts`, `exams.test.ts`: a feltöltött 2020-as vizsgafeladatok újraszámolva).
 - **Egy hurokban (ablakban) legfeljebb egy forrás**, minden szinten, a ZH-n is (a közös ágon lévő
   forrás mindkét ablakba számít): `tooManySourcesInMesh` (`generate.ts`).
 
@@ -78,8 +86,8 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   írja, miért (pl. „Csomóponti potenciállal 2 egyenlet, hurokárammal 3”).
 
 ### Beállítások (egy panelen, nem az eszköztáron)
-- **Csillag-delta:** csak bekapcsolva kerül csillag-delta a feladatba, és ugyanazt a seedű feladatot
-  alakítja át (a rajz szélére egy új ellenállás kerül, ettől híd lesz) — Eredő ellenállás,
+- **Csillag-delta:** csak bekapcsolva kerül csillag-delta a feladatba (akkor is csak kb. minden
+  harmadikba), és ugyanazt a seedű feladatot alakítja át (a rajz szélére egy új ellenállás kerül, ettől híd lesz) — Eredő ellenállás,
   Feszültség- és áramosztás, Teljes hálózatanalízis, Thevenin (Rth) témakörben. A napi feladatokat
   nem érinti.
 - **Áramkör újrarajzolása:** csak bekapcsolva; minden összevonásnál újrarajzolja az áramkört (az

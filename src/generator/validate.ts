@@ -58,6 +58,24 @@ export function seriesSourcePairs(net: Netlist): [string, string][] {
  * Geometriai érvényesség: az ágak vízszintesek vagy függőlegesek, nem fedik és nem keresztezik egymást,
  * nincs pont egy másik ág belsejében, nincs lógó pont (kivéve a kijelölt kapcsokat).
  */
+/** Két szakasz metszi-e egymást a végpontjaikon kívül (vagy fedik-e egymást). */
+function segmentsCross(a: { x1: number; y1: number; x2: number; y2: number }, b: { x1: number; y1: number; x2: number; y2: number }): boolean {
+  const cross = (ox: number, oy: number, px: number, py: number, qx: number, qy: number) => (px - ox) * (qy - oy) - (py - oy) * (qx - ox);
+  const d1 = cross(b.x1, b.y1, b.x2, b.y2, a.x1, a.y1);
+  const d2 = cross(b.x1, b.y1, b.x2, b.y2, a.x2, a.y2);
+  const d3 = cross(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1);
+  const d4 = cross(a.x1, a.y1, a.x2, a.y2, b.x2, b.y2);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  // Egy egyenesen fekvő, egymásba lógó szakaszok.
+  if (d1 === 0 && d2 === 0) {
+    const along = (x: number, y: number) => (a.x2 - a.x1) * (x - a.x1) + (a.y2 - a.y1) * (y - a.y1);
+    const L = along(a.x2, a.y2);
+    const [t1, t2] = [along(b.x1, b.y1), along(b.x2, b.y2)].sort((u, v) => u - v);
+    return Math.min(L, t2!) - Math.max(0, t1!) > 0;
+  }
+  return false;
+}
+
 export function geometryIssues(c: Circuit): string[] {
   const out: string[] = [];
   const pos = new Map(c.points.map((p) => [p.id, p]));
@@ -72,17 +90,20 @@ export function geometryIssues(c: Circuit): string[] {
     const q = pos.get(b.to)!;
     return { id: b.id, x1: p.x, y1: p.y, x2: q.x, y2: q.y, from: b.from, to: b.to };
   });
+  const diag = (s: (typeof segs)[number]) => s.x1 !== s.x2 && s.y1 !== s.y2;
   for (const s of segs) {
-    if (s.x1 !== s.x2 && s.y1 !== s.y2) out.push(`ferde ág ${s.id}`);
-    if (s.x1 > s.x2 || s.y1 > s.y2) out.push(`fordított irányú ág ${s.id}`);
+    // Keresztbe kötött ág csak 45°-os lehet, és mindig balról jobbra mutat.
+    if (diag(s) && Math.abs(s.x2 - s.x1) !== Math.abs(s.y2 - s.y1)) out.push(`ferde ág ${s.id}`);
+    if (diag(s) ? s.x1 > s.x2 : s.x1 > s.x2 || s.y1 > s.y2) out.push(`fordított irányú ág ${s.id}`);
     if (s.x1 === s.x2 && s.y1 === s.y2) out.push(`nulla hosszú ág ${s.id}`);
   }
   // Pont nem lehet másik ág belsejében.
   for (const p of c.points) {
     for (const s of segs) {
       if (p.id === s.from || p.id === s.to) continue;
+      const onDiag = diag(s) && p.x > s.x1 && p.x < s.x2 && (p.y - s.y1) * (s.x2 - s.x1) === (p.x - s.x1) * (s.y2 - s.y1);
       const inside =
-        (s.x1 === s.x2 && p.x === s.x1 && p.y > s.y1 && p.y < s.y2) || (s.y1 === s.y2 && p.y === s.y1 && p.x > s.x1 && p.x < s.x2);
+        onDiag || (s.x1 === s.x2 && p.x === s.x1 && p.y > s.y1 && p.y < s.y2) || (s.y1 === s.y2 && p.y === s.y1 && p.x > s.x1 && p.x < s.x2);
       if (inside) out.push(`pont (${p.x},${p.y}) a(z) ${s.id} ág belsejében`);
     }
   }
@@ -91,6 +112,11 @@ export function geometryIssues(c: Circuit): string[] {
     for (let j = i + 1; j < segs.length; j++) {
       const s = segs[i]!;
       const t = segs[j]!;
+      if (diag(s) || diag(t)) {
+        // Átlós ág: valódi (nem végponti) metszés tilos.
+        if (segmentsCross(s, t)) out.push(`kereszteződés: ${s.id} × ${t.id}`);
+        continue;
+      }
       const sH = s.y1 === s.y2;
       const tH = t.y1 === t.y2;
       if (sH !== tH) {

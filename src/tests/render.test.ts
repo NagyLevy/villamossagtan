@@ -100,7 +100,7 @@ describe('generált áramkörök rajza', () => {
 
   it('IEC-jelek: feszültségforrásnál a vonal a vezeték irányában, áramforrásnál merőlegesen; a nyíl a kör mellett', () => {
     let checked = 0;
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 130; i++) {
       const p = generateProblem({ seed: `IEC${i}`, topic: 'zh' });
       const layout = computeLayout(p.circuit);
       const svg = renderCircuitSvg(p.circuit, {}, layout);

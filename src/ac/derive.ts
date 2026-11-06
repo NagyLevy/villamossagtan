@@ -176,7 +176,7 @@ export function elementPhasor(b: BuiltLadder, fc: ForwardChain, U0: Cx, id: stri
     steps.push({
       title: 'Ohm törvénye',
       text: loc.arm.parts.length > 1 ? `A ${loc.k}. keresztág árama a keresztág feszültsége osztva a keresztág teljes (soros) impedanciájával; ez folyik a keresett elemen is.` : `A keresett elem maga a ${loc.k}. keresztág: az árama a keresztág feszültsége osztva az impedanciájával.`,
-      terms: [`${is(id)} = \\dfrac{${us(String(loc.k))}}{${armSym}}`],
+      terms: [`${is(id)} = \\dfrac{${chain.sym[loc.k]!}}{${armSym}}`],
       subst: `${is(id)} = \\dfrac{${texPhasor(Uk, 'V', ctx)}}{${num(loc.arm.z)}} = ${texPhasor(I, 'A', ctx)}`,
       result: { symbol: is(id), value: abs(I), unit: 'A', tex: texPhasor(I, 'A', ctx) },
       highlight: { elements: loc.arm.ids, arrows: [{ element: id, kind: 'I', value: ctx.ac ? abs(I) : I.re }] },
@@ -187,7 +187,7 @@ export function elementPhasor(b: BuiltLadder, fc: ForwardChain, U0: Cx, id: stri
     steps.push({
       title: 'A soros ág árama',
       text: `A ${loc.k}. soros ágon az az áram folyik, ami a ${loc.k - 1 === 0 ? 'generátor kapcsairól' : `${loc.k - 1}. keresztág csomópontjából`} a jobbra lévő teljes részbe befolyik: feszültség osztva a jobbra látott eredővel.`,
-      terms: [`${is(id)} = \\dfrac{${us(String(loc.k - 1))}}{${fc.pTex[loc.k]!}}`],
+      terms: [`${is(id)} = \\dfrac{${chain.sym[loc.k - 1]!}}{${fc.pTex[loc.k]!}}`],
       subst: `${is(id)} = \\dfrac{${texPhasor(Uprev, 'V', ctx)}}{${num(fc.P[loc.k]!)}} = ${texPhasor(I, 'A', ctx)}`,
       result: { symbol: is(id), value: abs(I), unit: 'A', tex: texPhasor(I, 'A', ctx) },
       highlight: { elements: loc.arm.ids, groups: [{ elements: fc.pIds[loc.k]!, label: `${ctx.ac ? 'Z' : 'R'}${fc.pName[loc.k]} = ${plainZ(fc.P[loc.k]!, ctx)}`, tone: 'accent' }], arrows: [{ element: id, kind: 'I', value: ctx.ac ? abs(I) : I.re }] },

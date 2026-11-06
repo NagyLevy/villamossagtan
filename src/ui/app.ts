@@ -20,10 +20,22 @@ import { loadSettings, saveSettings, type MethodId, type Mode, type Settings, ty
 import { fieldAnswerText, scoreTask, TaskViewer, type Score } from './viewer';
 import { formatNumber } from '../units';
 
+/**
+ * A váltóáramú (Villamosságtan 2) rész egyelőre zárva: a fül szürke, „Hamarosan” felirattal.
+ * A kód kész és tesztelt; megnyitáshoz elég ezt true-ra állítani.
+ */
+export const AC_ENABLED = false;
+const SOON = 'Hamarosan';
+
 const MODE_NAMES: Record<Mode, string> = { gyakorlas: 'Gyakorlás', idore: 'Időre', vizsga: 'Próbavizsga', napi: 'Napi' };
 
 export function startApp(root: HTMLElement): void {
   const settings = loadSettings();
+  // Zárt váltóáramnál a korábban elmentett választás is visszaáll egyenáramra.
+  if (!AC_ENABLED) {
+    settings.domain = 'dc';
+    if (settings.examKind !== 'dc') settings.examKind = 'dc';
+  }
   const update = (patch: Partial<Settings>) => {
     Object.assign(settings, patch);
     saveSettings(settings);
@@ -47,7 +59,7 @@ export function startApp(root: HTMLElement): void {
     'Tananyag',
     [
       { value: 'dc', label: 'Egyenáram' },
-      { value: 'ac', label: 'Váltóáram' },
+      { value: 'ac', label: 'Váltóáram', ...(AC_ENABLED ? {} : { disabled: true, badge: SOON, hint: 'A váltóáramú (Villamosságtan 2) feladatok hamarosan elérhetők.' }) },
     ],
     settings.domain,
     (v) => {
@@ -126,20 +138,25 @@ export function startApp(root: HTMLElement): void {
     const level: Level = settings.dcTopic === 'zh' ? 'zh' : settings.dcLevel;
     // A Csillag-delta témakörben az átalakítás a módszer.
     const method: MethodId = settings.dcTopic === 'csillag-delta' ? 'csillag-delta' : settings.method === 'csillag-delta' && !settings.starDelta ? 'redukcio' : settings.method;
-    const found = findFor(method, settings.dcTopic, level);
-    return dcTask(generateProblem({ seed: found ?? seed, topic: settings.dcTopic, level, starDelta: sdOn(settings.dcTopic), starDeltaMode: settings.starDeltaMode }));
+    // Bekapcsolt csillag-deltánál sem minden feladat hidas: csak kb. minden harmadik.
+    const sd = sdOn(settings.dcTopic);
+    const found = findFor(method, settings.dcTopic, level, sd);
+    return dcTask(generateProblem({ seed: found ?? seed, topic: settings.dcTopic, level, starDelta: sd, starDeltaMode: settings.starDeltaMode }));
   };
 
-  /** Csillag-delta: a beállítás szerint, a Csillag-delta témakörben mindig. */
-  const sdOn = (topic: Topic) => settings.starDelta || topic === 'csillag-delta';
+  /**
+   * Kerüljön-e csillag-delta ebbe a feladatba: a Csillag-delta témakörben mindig; máshol csak ha a
+   * beállítás be van kapcsolva, és akkor is csak a feladatok egy részében (véletlenszerűen).
+   */
+  const sdOn = (topic: Topic) => topic === 'csillag-delta' || (settings.starDelta && Math.random() < 0.35);
 
   /** Seed, amivel a feladat az adott módszerrel a legkönnyebb (vagy legalább megoldható). */
-  const findFor = (m: MethodId, topic: Topic, level: Level): string | null => {
+  const findFor = (m: MethodId, topic: Topic, level: Level, sd: boolean): string | null => {
     for (const relaxed of [false, true])
       for (let i = 0; i < (relaxed ? 30 : 40); i++) {
         const s = randomSeed();
         try {
-          const p = generateProblem({ seed: s, topic, level, starDelta: sdOn(topic), starDeltaMode: settings.starDeltaMode });
+          const p = generateProblem({ seed: s, topic, level, starDelta: sd, starDeltaMode: settings.starDeltaMode });
           if (methodFit(m, p, relaxed).ok) return s;
         } catch {
           // Ez a seed nem adott érvényes feladatot.
@@ -253,15 +270,20 @@ export function startApp(root: HTMLElement): void {
 
   const showExamStart = () => {
     stopTimer();
-    const cards = EXAMS.map((e) =>
-      h(
+    const cards = EXAMS.map((e) => {
+      const locked = !AC_ENABLED && e.kind !== 'dc';
+      return h(
         'button',
-        { class: `exam-card${settings.examKind === e.kind ? ' is-on' : ''}`, attrs: { type: 'button', 'aria-pressed': String(settings.examKind === e.kind) }, on: { click: () => (update({ examKind: e.kind }), showExamStart()) } },
-        h('span', { class: 'exam-name', text: e.name }),
+        {
+          class: `exam-card${settings.examKind === e.kind ? ' is-on' : ''}${locked ? ' is-disabled' : ''}`,
+          attrs: { type: 'button', 'aria-pressed': String(settings.examKind === e.kind), ...(locked ? { 'aria-disabled': 'true', title: 'Hamarosan elérhető' } : {}) },
+          on: { click: () => (locked ? toast('A váltóáramú próbavizsga hamarosan elérhető.') : (update({ examKind: e.kind }), showExamStart())) },
+        },
+        h('span', { class: 'exam-name' }, e.name, locked ? h('span', { class: 'badge', text: SOON }) : null),
         h('span', { class: 'exam-time', text: `${e.minutes} perc` }),
         h('span', { class: 'exam-desc', text: e.description }),
-      ),
-    );
+      );
+    });
     main.replaceChildren(
       h(
         'section',
@@ -532,7 +554,7 @@ export function startApp(root: HTMLElement): void {
       row('Áramkör újrarajzolása', 'Egyenáram: minden összevonás után újrarajzolja az áramkört, az eredő ellenállással.', toggle('', settings.redraw, (v) => update({ redraw: v })).el),
       row(
         'Csillag-delta feladatok',
-        'Egyenáram: hidas hálózatok, amikhez csillag-delta átalakítás kell.',
+        'Bekapcsolva a feladatok egy részében (kb. minden harmadikban) hidas hálózat jön, amihez csillag-delta átalakítás kell. A Csillag-delta témakörben mindig.',
         toggle('', settings.starDelta, (v) => {
           update({ starDelta: v, ...(v ? {} : { method: settings.method === 'csillag-delta' ? 'redukcio' : settings.method }) });
           sdMode.el.hidden = !v;

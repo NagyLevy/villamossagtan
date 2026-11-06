@@ -5,7 +5,7 @@
 import type { Step } from '../methods/types';
 import { Rng } from '../generator/rng';
 import type { AnswerField, Task, TaskQuestion } from '../tasks/types';
-import { formatNumber, formatQuantity } from '../units';
+import { articleFor, formatNumber, formatQuantity } from '../units';
 import { abs, argDeg, conj, cx, div, inv, mul, scale, texAlg, texExp, texNum, type Cx } from './complex';
 import { backwardChain, elementPhasor, polarOf, sourceVoltageStep, texOmega, timeFunctionStep } from './derive';
 import { armZ, buildLadder, dividerChain, forwardChain, reactanceStep, texI, texPhasor, texQtyReal, texU, texZ, texZVal, type ArmSpec, type BuiltLadder, type LadderSpec, type PartSpec, type Passive } from './ladder';
@@ -352,6 +352,8 @@ function theveninTask(rng: Rng, o: AcOptions): Task | null {
     const before = steps.length;
     zth = backwardChain(b, steps, ctx, texZ('th'));
     steps[before]!.group = 'Belső impedancia';
+    // A belső impedancia nem lehet (közel) nulla: soros L–C rezonanciánál a Norton-áram végtelen lenne.
+    if (abs(zth) < 50) return null;
     if (variant === 'Z') {
       const text = 'Mekkora az A–B kapcsokra csatlakozó hálózat Thevenin-helyettesítő generátorának belső impedanciája? Add meg algebrai alakban!';
       return { ...base, title: text, questions: [{ id: qid(), text, fields: complexFields(zth, 'Ω') }], solution: { method: 'helyettesito', title: 'Belső impedancia', steps, answers: [] } };
@@ -363,13 +365,14 @@ function theveninTask(rng: Rng, o: AcOptions): Task | null {
   const U0 = sourceVoltageStep(b, fc, steps, ctx);
   const n = b.series.length;
   // Az osztólánc a kimeneti keresztágig.
-  const { U } = dividerChain(b, fc, U0, n, steps, ctx);
+  const { U, sym: usym } = dividerChain(b, fc, U0, n, steps, ctx);
   if (steps[firstU]) steps[firstU]!.group = 'Üresjárási feszültség';
   const uu = U[n]!;
+  if (abs(uu) < 1e-6 * (src.kind === 'V' ? src.amp : src.amp * 1000)) return null;
   steps.push({
     title: 'Üresjárási feszültség',
     text: b.tail ? 'A kapcsok terheletlenek, így a kapcsok előtti soros ágon nem folyik áram, nem esik rajta feszültség: az üresjárási feszültség az utolsó keresztág feszültsége.' : 'A kapcsok terheletlenek: az üresjárási feszültség az utolsó keresztág (a kapcsokkal párhuzamos rész) feszültsége.',
-    terms: [`${texU('\\ddot u')} = ${texU(String(n))}`],
+    terms: [`${texU('\\ddot u')} = ${usym[n]!}`],
     result: { symbol: texU('\\ddot u'), value: abs(uu), unit: 'V', tex: `${texPhasor(uu, 'V', ctx)}` },
     highlight: { terminals: true, elements: b.tail?.ids ?? [] },
   });
@@ -474,9 +477,16 @@ function transientTask(rng: Rng, o: AcOptions): Task | null {
   const firstU = steps.length;
   const fc = forwardChain(b, steps, ctx);
   const U0 = sourceVoltageStep(b, fc, steps, ctx);
-  const { U } = dividerChain(b, fc, U0, b.series.length, steps, ctx);
+  const { U, sym: usym } = dividerChain(b, fc, U0, b.series.length, steps, ctx);
   if (steps[firstU]) steps[firstU]!.group = 'Állandósult állapot';
   const uu = U[b.series.length]!.re;
+  steps.push({
+    title: 'Üresjárási feszültség',
+    text: `A ${loadKind === 'L' ? 'tekercs' : 'kondenzátor'} helyéről nézve ez a hálózat egy Thevenin-generátor. Üresjárásban (a tároló helyén szakadás) ${b.tail ? 'a kapcsok előtti soros ellenálláson nem folyik áram, így nem esik rajta feszültség, ezért ' : ''}az üresjárási feszültség az utolsó keresztág feszültsége.`,
+    terms: [`U_{\\ddot u} = ${usym[b.series.length]!}`],
+    result: { symbol: 'U_{\\ddot u}', value: uu, unit: 'V' },
+    highlight: { elements: b.tail?.ids ?? [] },
+  });
   const xInf = loadKind === 'L' ? uu / rth : uu;
   steps.push({
     title: 'Állandósult érték',
@@ -524,11 +534,36 @@ const BUILDERS: Record<AcTopic, (rng: Rng, o: AcOptions) => Task | null> = {
   tranziens: transientTask,
 };
 
+/**
+ * Végső biztosíték: minden válasz véges, és a levezetésben sehol nincs végtelen vagy nem-szám
+ * (pl. rezonancia miatti nullával osztás egy közbülső összevonásnál). Ha mégis, új feladat készül.
+ */
+function wellFormed(t: Task): boolean {
+  if (!t.questions.every((q) => q.fields.every((f) => Number.isFinite(f.answer)))) return false;
+  const bad = /\bNaN\b|Infinity|∞/;
+  // A szövegben az "x∞" (állandósult érték) jelölés szabályos, ezért ott csak NaN-t keresünk.
+  return t.solution!.steps.every((st) => ![...(st.terms ?? []), st.subst ?? '', st.result?.tex ?? ''].some((x) => bad.test(x)) && !/\bNaN\b/.test(st.text) && (!st.result || Number.isFinite(st.result.value)));
+}
+
+/** Névelő a sorszám elé: "a 2." de "az 1.", "az 5." (a kimondott szám első hangja dönt). */
+function fixArticles(t: string): string {
+  return t.replace(/(^|[\s(])([Aa])z? (\d+)\./g, (_m, pre: string, a: string, n: string) => {
+    const art = articleFor(n);
+    return `${pre}${a === 'A' ? art.charAt(0).toUpperCase() + art.slice(1) : art} ${n}.`;
+  });
+}
+
 export function generateAcTask(o: AcOptions): Task {
   const rng = new Rng(`${o.seed}|${o.topic}|${o.level}|ac`);
   for (let attempt = 0; attempt < 400; attempt++) {
     const t = BUILDERS[o.topic](rng, o);
-    if (t) return t;
+    if (t && wellFormed(t)) {
+      for (const st of t.solution!.steps) {
+        st.text = fixArticles(st.text);
+        if (st.bullets) st.bullets = st.bullets.map(fixArticles);
+      }
+      return t;
+    }
   }
   throw new Error('Nem sikerült feladatot generálni.');
 }

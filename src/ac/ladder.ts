@@ -359,6 +359,8 @@ export function forwardChain(b: BuiltLadder, steps: Step[], ctx: Ctx): ForwardCh
 export interface NodeChain {
   /** U[k]: a k. keresztág feszültsége (felső − alsó vezeték), k = 0 a generátor kapcsa. */
   U: Cx[];
+  /** A k. hely feszültségének LaTeX-jele a levezetésben (elem nélküli soros ágnál az előzőé). */
+  sym: string[];
 }
 
 /**
@@ -368,31 +370,38 @@ export interface NodeChain {
 export function dividerChain(b: BuiltLadder, fc: ForwardChain, U0: Cx, upTo: number, steps: Step[], ctx: Ctx): NodeChain {
   const us = (sub: string) => (ctx.ac ? texU(sub) : `U_{${sub}}`);
   const U: Cx[] = [U0];
+  // Melyik (már bemutatott) jel adja a k. hely feszültségét: elem nélküli soros ágnál az előzőé.
+  const idx: number[] = [0];
+  const place = (k: number) => (k === 0 ? 'a generátor' : b.shunts[k - 1] ? `a ${k}. keresztág` : `a ${k}. csomópont (a felső és az alsó vezeték között)`);
   for (let k = 1; k <= upTo; k++) {
     const s = b.series[k - 1]!;
     const prev = U[k - 1]!;
     if (s.parts.length === 0) {
       U[k] = prev;
+      idx[k] = idx[k - 1]!;
       continue;
     }
+    idx[k] = k;
     const ratio = div(fc.W[k]!, fc.P[k]!);
     const u = mul(prev, ratio);
     U[k] = u;
     const wSym = fc.wTex[k]!;
     const pSym = fc.pTex[k]!;
-    const prevSym = k === 1 ? us('0') : us(String(k - 1));
+    const prevSym = us(String(idx[k - 1]!));
     const num = (z: Cx) => (ctx.ac ? texAlgP(z) : texNum(z.re));
     steps.push({
       title: 'Feszültségosztás',
-      text: `A ${k}. soros ág és a mögötte lévő rész sorosan kapcsolódik, így a ${k - 1 === 0 ? 'generátor' : `${k - 1}. keresztág`} feszültsége az impedanciák arányában oszlik meg. A ${k}. keresztágra a mögötte lévő eredőre eső rész jut.`,
+      text: `A ${k}. soros ág és a mögötte lévő rész sorosan kapcsolódik, így ${place(idx[k - 1]!)} feszültsége az impedanciák arányában oszlik meg rajtuk. ${capitalize(place(k))} feszültsége a mögötte lévő eredőre eső rész.`,
       terms: [`${us(String(k))} = ${prevSym}\\cdot\\dfrac{${wSym}}{${pSym}}`],
       subst: `${us(String(k))} = ${ctx.ac ? texPhasor(prev, 'V', ctx) : texQtyReal(prev.re, 'V')}\\cdot\\dfrac{${num(fc.W[k]!)}}{${num(fc.P[k]!)}} = ${texPhasor(u, 'V', ctx)}`,
       result: { symbol: us(String(k)), value: abs(u), unit: 'V', tex: texPhasor(u, 'V', ctx) },
       highlight: { elements: b.shunts[k - 1]?.ids ?? [], groups: [{ elements: fc.wIds[k]!, label: `U${k} = ${ctx.ac ? `${formatQuantity(abs(u), 'V', { sig: 3 })} ∠${formatNumber(argDeg(u), 3)}°` : formatQuantity(u.re, 'V')}`, tone: 'result' }] },
     });
   }
-  return { U };
+  return { U, sym: idx.map((i) => us(String(i))) };
 }
+
+const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 /** Hol van egy elem a létrában. */
 export function locate(b: BuiltLadder, id: string): { where: 'series' | 'shunt' | 'tail'; k: number; arm: ArmRef; index: number } | null {

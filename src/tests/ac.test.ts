@@ -1,6 +1,7 @@
 // Szinuszos és bekapcsolási feladatok: a lépésenkénti (eredő + osztó) levezetés eredménye minden
 // esetben egyezik a független komplex MNA-megoldóval.
 
+import katex from 'katex';
 import { describe, expect, it } from 'vitest';
 import { abs, argDeg, conj, mul, scale, sub, angleDiff, type Cx } from '../ac/complex';
 import { solveAc } from '../ac/mna';
@@ -10,7 +11,8 @@ import type { Task } from '../tasks/types';
 import { computeLayout } from '../render/layout';
 
 const LEVELS: AcLevel[] = ['konnyu', 'kozepes', 'nehez'];
-const N = 60;
+/** Feladatonként ennyi seed; alaposabb futtatáshoz: AC_N=2000 npx vitest run src/tests/ac.test.ts */
+const N = Number(process.env.AC_N ?? 60);
 
 function omegaOf(t: Task): number {
   const m = /\\omega = (?:10\^\{(\d+)\}|([\d{},]+))/.exec(t.given?.[0] ?? '');
@@ -170,6 +172,31 @@ describe('szinuszos feladatok = MNA', () => {
       const s = solveAc(t.circuit!, w0)!;
       expect(s).not.toBeNull();
     }
+  });
+});
+
+describe('szinuszos feladatok levezetése', () => {
+  it('minden képlet hibátlanul megjelenik (KaTeX), és nincs benne NaN, végtelen vagy üres érték', () => {
+    const topics: AcTopic[] = ['ac-impedancia', 'ac-fazor', 'ac-teljesitmeny', 'ac-helyettesito', 'ac-rezonancia', 'tranziens'];
+    const bad = /\bNaN\b|Infinity|undefined|∞|\bnull\b/;
+    for (const topic of topics)
+      for (const level of LEVELS)
+        for (let i = 0; i < Math.ceil(N / 3); i++) {
+          const t = generateAcTask({ seed: `K${i}`, topic, level });
+          const where = `${topic} ${level} K${i}`;
+          expect(bad.test(t.title), where).toBe(false);
+          for (const g of t.given ?? []) katex.renderToString(g, { throwOnError: true, strict: 'ignore' });
+          for (const q of t.questions) for (const f of q.fields) expect(Number.isFinite(f.answer), `${where} ${f.label}`).toBe(true);
+          for (const st of t.solution!.steps) {
+            const texts = [...(st.terms ?? []), st.subst, st.result?.tex, st.result ? `${st.result.symbol} = 1` : undefined].filter((x): x is string => !!x);
+            for (const tx of texts) {
+              expect(bad.test(tx), `${where} ${st.title}: ${tx}`).toBe(false);
+              expect(() => katex.renderToString(tx, { throwOnError: true, strict: 'ignore' }), `${where} ${st.title}: ${tx}`).not.toThrow();
+            }
+            // A szövegben az "x∞" (állandósult érték) jelölés szabályos.
+            expect(/\bNaN\b|Infinity|undefined|\bnull\b/.test(st.text + (st.bullets ?? []).join(' ')), `${where} ${st.title}`).toBe(false);
+          }
+        }
   });
 });
 

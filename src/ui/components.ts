@@ -6,8 +6,11 @@ import { h, icon, ICONS } from './dom';
 export interface SegmentOption<T extends string> {
   value: T;
   label: string;
-  /** Kis jelvény a felirat mellett (pl. "most tanulom"). */
+  /** Kis jelvény a felirat mellett (pl. "Hamarosan"). */
   badge?: string;
+  /** Nem választható (szürke); a `hint` jelenik meg rámutatáskor. */
+  disabled?: boolean;
+  hint?: string;
 }
 
 export interface Segmented<T extends string> {
@@ -55,10 +58,11 @@ export function segmented<T extends string>(label: string, options: SegmentOptio
       h(
         'button',
         {
-          class: 'seg-btn',
-          attrs: { type: 'button', role: 'radio', 'data-value': o.value },
+          class: `seg-btn${o.disabled ? ' is-disabled' : ''}`,
+          attrs: { type: 'button', role: 'radio', 'data-value': o.value, ...(o.disabled ? { 'aria-disabled': 'true', title: o.hint ?? 'Nem elérhető' } : {}) },
           on: {
             click: () => {
+              if (o.disabled) return;
               if (current !== o.value) {
                 select(o.value);
                 onChange(o.value);
@@ -69,6 +73,7 @@ export function segmented<T extends string>(label: string, options: SegmentOptio
               let j = -1;
               if (e.key === 'ArrowRight' || e.key === 'ArrowDown') j = (i + 1) % opts.length;
               if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') j = (i - 1 + opts.length) % opts.length;
+              if (j >= 0 && opts[j]!.disabled) j = -1;
               if (j >= 0) {
                 e.preventDefault();
                 e.stopPropagation();
