@@ -22,7 +22,8 @@ export interface CircuitElement {
   value: number;
   /**
    * Irány az ág from→to irányához képest.
-   * V: +1 → a nyíl a `to` felé mutat, vagyis a `to` oldali kivezetés potenciálja `value`-val nagyobb.
+   * V: +1 → a `to` oldali kivezetés potenciálja `value`-val nagyobb. (A rajzon a feszültség nyila
+   *    a nagyobb potenciáltól a kisebb felé mutat, vagyis ilyenkor a `from` felé; lásd render/layout.ts.)
    * I: +1 → a forrás árama from→to irányban folyik.
    * R: a referenciairány mindig from→to (balról jobbra, fentről lefelé); a dir itt nem számít.
    */

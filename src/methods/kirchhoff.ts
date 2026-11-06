@@ -66,11 +66,13 @@ function kvl(p: Problem, q: Question, opts: KirchhoffOptions): MethodResult {
   const net = toNetlist(p.circuit).net;
   const byId = new Map(net.elements.map((e) => [e.id, e]));
   const flip = opts.reverse ? -1 : 1;
-  const loop = q.loop!.map((x) => ({ id: x.id, sign: (x.sign * flip) as 1 | -1 }));
+  // Feszültségforrásnál a feszültség nyila (a nagyobb potenciáltól a kisebb felé) a modell a→b irányával
+  // ellentétes: az előjelét ehhez a nyílhoz mérjük, és a feszültsége így +E.
+  const isV = (id: string) => byId.get(id)!.kind === 'V';
+  const loop = q.loop!.map((x) => ({ id: x.id, sign: (x.sign * flip * (isV(x.id) ? -1 : 1)) as 1 | -1 }));
   const known = new Map<string, number>();
   for (const g of q.given ?? []) known.set(g.target, g.value);
-  // Feszültségforrás: U_ab = φ(a) − φ(b) = −E (a nyíl b felé, a magasabb potenciál felé mutat).
-  for (const x of loop) if (byId.get(x.id)!.kind === 'V') known.set(x.id, -byId.get(x.id)!.value);
+  for (const x of loop) if (isV(x.id)) known.set(x.id, byId.get(x.id)!.value);
   const u = q.target!;
   const su = loop.find((x) => x.id === u)!.sign;
   const others = loop.filter((x) => x.id !== u);
@@ -85,7 +87,7 @@ function kvl(p: Problem, q: Question, opts: KirchhoffOptions): MethodResult {
     },
     {
       title: 'Huroktörvény',
-      text: 'Ha a körüljárás az elem referenciairányával egyezik, a feszültsége pozitív előjellel kerül az egyenletbe, különben negatívval. A feszültségforrás feszültsége a nyila irányába emel.',
+      text: 'Ha a körüljárás az elem feszültségének nyilával egyezik, a feszültsége pozitív előjellel kerül az egyenletbe, különben negatívval. A feszültség nyila mindig a nagyobb potenciáltól a kisebb felé mutat, az ellenállásnál és a feszültségforrásnál is.',
       terms: [...[loop.find((x) => x.id === u)!, ...others].map((x, i) => term(x, i === 0)), '= 0'],
       highlight: { loops: [{ elements: loop }], arrows: others.filter((x) => byId.get(x.id)!.kind !== 'V').map((x) => ({ element: x.id, kind: 'U', value: known.get(x.id)! })) },
     },

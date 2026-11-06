@@ -17,6 +17,14 @@ import type { MethodResult, Step } from './types';
 const IM = (k: number) => `I_{${k}}`;
 
 /** Lineáris egyenlet LaTeX-ben: 6 I_1 - 2 I_2 = 2. */
+/** A hurokegyenlet "= 0" alakban (a forrás a bal oldalon), majd átrendezve a megoldáshoz. */
+function zeroForm(coeffs: number[], names: string[], rhs: number): string {
+  const moved = linearTex(coeffs, names, rhs);
+  if (Math.abs(rhs) < 1e-12) return moved;
+  const left = moved.slice(0, moved.lastIndexOf(' = '));
+  return `${left} ${rhs > 0 ? '-' : '+'} ${texNum(Math.abs(rhs))} = 0 \\quad\\Rightarrow\\quad ${moved}`;
+}
+
 export function linearTex(coeffs: number[], names: string[], rhs: number): string {
   const parts: string[] = [];
   coeffs.forEach((c, i) => {
@@ -100,7 +108,6 @@ export function solveLoopCurrent(p: Problem): MethodResult {
     const coeffs = new Array<number>(M).fill(0);
     let rhs = 0;
     const lhsTerms: string[] = [];
-    const rhsTerms: string[] = [];
     const bullets: string[] = [];
     // Ágáram szövegesen: "I₁ − I₂".
     const exprTxt = (mm: { mesh: number; sign: number }[]) => mm.map((m, i) => `${m.sign < 0 ? '− ' : i ? '+ ' : ''}I${sub(m.mesh)}`).join(' ');
@@ -123,11 +130,13 @@ export function solveLoopCurrent(p: Problem): MethodResult {
             : `${e.id} (${formatQuantity(e.value, 'Ω')}): csak ebben a hurokban van, a hurokáram folyik rajta; a feszültsége ${formatQuantity(e.value, 'Ω')} · ${exprTxt(along)}.`,
         );
       } else if (e.kind === 'V') {
-        // c · U_ab = c · (−E) a bal oldalon → jobb oldalra +c · E.
+        // A forrás feszültsége a bal oldalon: c · U_ab = c · (−E). A feszültség nyila (a nagyobb potenciáltól a
+        // kisebb felé) a modell a→b irányával ellentétes, így c < 0 jelenti, hogy a körüljárás egyezik vele: +E.
         rhs += c * e.value;
-        rhsTerms.push(`${c < 0 ? '-' : rhsTerms.length ? '+' : ''} U_{\\text{${e.id}}}`);
+        const along = c < 0;
+        lhsTerms.push(`${along ? '+' : '-'} U_{\\text{${e.id}}}`);
         bullets.push(
-          `${e.id} (${formatQuantity(e.value, 'V')}): a körüljárás ${c > 0 ? 'a nyíl irányában' : 'a nyíllal szemben'} halad át rajta, ezért a jobb oldalra ${c > 0 ? '+' : '−'}${formatQuantity(e.value, 'V')} kerül (a forrás ${c > 0 ? 'hajtja' : 'fékezi'} a hurokáramot).`,
+          `${e.id} (${formatQuantity(e.value, 'V')}): a körüljárás ${along ? 'egyezik a feszültség nyilával' : 'szemben halad a feszültség nyilával'}, ezért a bal oldalra ${along ? '+' : '−'}${formatQuantity(e.value, 'V')} kerül (ugyanúgy, mint egy ellenállás feszültsége, aminek a nyila a körüljárással ${along ? 'egyezik' : 'szembe megy'}).`,
         );
       }
     }
@@ -138,11 +147,11 @@ export function solveLoopCurrent(p: Problem): MethodResult {
       step: {
         title: isSuper ? `Szuperhurok (${idx.map((i) => `I${i}`).join(', ')})` : `Huroktörvény: I${idx[0]} hurok`,
         text: isSuper
-          ? 'A két hurkot együtt járjuk körbe (szuperhurok), mert a közös águkban áramforrás van, aminek a feszültségét nem ismerjük; így az kiesik. A huroktörvény: körbeérve az ellenállásokon eső feszültségek összege egyenlő a források által adott feszültséggel. Tagonként:'
-          : 'Kirchhoff huroktörvénye: ha körbejárjuk a hurkot, az ellenállásokon eső feszültségek összege egyenlő a források által adott feszültséggel (különben nem érnénk vissza ugyanarra a potenciálra). Tagonként:',
+          ? 'A két hurkot együtt járjuk körbe (szuperhurok), mert a közös águkban áramforrás van, aminek a feszültségét nem ismerjük; így az kiesik. A huroktörvény: körbeérve a feszültségek előjeles összege nulla. Minden tag a bal oldalra kerül: amelyik feszültség nyila egyezik a körüljárással, az +, amelyiké szembe megy, az −. Tagonként:'
+          : 'Kirchhoff huroktörvénye: ha körbejárjuk a hurkot, a feszültségek előjeles összege nulla (különben nem érnénk vissza ugyanarra a potenciálra). Minden tag a bal oldalra kerül: amelyik feszültség nyila egyezik a körüljárással, az +, amelyiké szembe megy, az −. Tagonként:',
         bullets,
-        terms: [...lhsTerms, `= ${rhsTerms.join(' ') || '0'}`],
-        subst: linearTex(coeffs, names, rhs),
+        terms: [...lhsTerms, '= 0'],
+        subst: zeroForm(coeffs, names, rhs),
         highlight: { loops: loopsOf(idx) },
       },
     });

@@ -136,7 +136,7 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
         text: isShort
           ? 'A rövidzár a két pontot összeköti: a potenciáljuk azonos.'
           : toGround
-            ? `A(z) ${shown(q.elems.map((e) => e.id)).join(', ')} feszültségforrás a referencia és egy csomópont között van: a csomópont potenciálja ismert, a nyíl a magasabb potenciál felé mutat.`
+            ? `A(z) ${shown(q.elems.map((e) => e.id)).join(', ')} feszültségforrás a referencia és egy csomópont között van: a csomópont potenciálja ismert (a feszültség nyilának talpánál van a nagyobb potenciál).`
             : `A(z) ${shown(q.elems.map((e) => e.id)).join(', ')} feszültségforrás két ismeretlen csomópont között van: szupercsomópontot alkotnak, a potenciáljuk különbsége a forrásfeszültség.`,
         terms: [`${ph(q.e)} - ${ph(q.s)} = ${texNum(q.E)}`],
         subst: linearTex(r.coeffs, sys.unknowns.map(ph), r.rhs),

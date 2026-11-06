@@ -196,7 +196,10 @@ function arrowFor(geom: Pick<ElementGeom, 'center' | 'axis' | 'orient' | 'el'>, 
   const off = SIZE.arrowOffset;
   const n = side === 'above' ? { x: 0, y: -off } : side === 'below' ? { x: 0, y: off } : side === 'left' ? { x: -off, y: 0 } : { x: off, y: 0 };
   const half = SIZE.arrowLen / 2;
-  const d = el.dir; // +1: a nyíl az ág irányába (from→to) mutat
+  // A modellben V-nél dir = +1: a `to` oldal potenciálja nagyobb. A feszültség nyilát úgy rajzoljuk,
+  // ahogy tanultuk (Dr. Lilik Ferenc): a nagyobb potenciáltól a kisebb felé, mint az ellenállásokon.
+  // Áramforrásnál a nyíl az áram iránya (dir = +1: from→to).
+  const d = el.kind === 'V' ? -el.dir : el.dir;
   const from = { x: center.x + n.x - axis.x * half * d, y: center.y + n.y - axis.y * half * d };
   const to = { x: center.x + n.x + axis.x * half * d, y: center.y + n.y + axis.y * half * d };
   const pad = 5;

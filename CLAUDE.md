@@ -45,8 +45,13 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
 ### Rajz és generátor
 - **IEC forrásjelek:** feszültségforrás = kör, a vonal a vezeték **mentén** (kiiktatva rövidzár);
   áramforrás = kör, a vonal a vezetékre **merőleges** (kiiktatva szakadás). Az irányt jelző nyíl
-  mindkettőnél a kör **mellett** van, sosem benne (feszültségforrás: vékony, nyitott hegy a nagyobb
-  potenciál felé; áramforrás: tömör hegy az áram irányába). Lásd `src/render/svg.ts`.
+  mindkettőnél a kör **mellett** van, sosem benne (feszültségforrás: vékony, nyitott hegyű nyíl, a
+  **feszültség nyila: a nagyobb potenciáltól a kisebb felé**, ugyanúgy, mint az ellenállásokon eső
+  feszültségé; áramforrás: tömör hegy az áram irányába). Lásd `src/render/svg.ts`, `layout.ts`.
+  Így tanítja Dr. Lilik Ferenc; az internetes „a + felé mutat” jelölést NE használd.
+- **Huroktörvény / hurokáram felírása (Dr. Lilik Ferenc szerint):** minden tag a bal oldalon, „= 0”;
+  amelyik feszültség nyila egyezik a körüljárással, az **+**, amelyiké szembe megy, az **−** (a
+  feszültségforrásé is). Utána rendezzük át a megoldáshoz (`src/methods/loopcurrent.ts`).
 - **Soha nincs két forrás sorosan** (sem egy ágon belül, sem egy olyan csomóponton át, ahol csak két
   forrás találkozik): `seriesSourcePairs` (`validate.ts`).
 - **Átívelő ágak, mint a ZH-rajzokon:** a többforrásos, Thevenin-, Kirchhoff- és ZH-feladatok egy

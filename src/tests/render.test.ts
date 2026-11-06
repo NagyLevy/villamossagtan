@@ -37,8 +37,9 @@ function checkArrowsMatchSolver(c: Circuit, layout: Layout) {
       if (el.kind === 'V') {
         const a = geom.arrow!;
         const along = (a.to.x - a.from.x) * geom.axis.x + (a.to.y - a.from.y) * geom.axis.y;
-        const [low, high] = along > 0 ? [fromNode, toNode] : [toNode, fromNode];
-        // A nyíl a magasabb potenciál felé mutat, a különbség éppen a forrásfeszültség.
+        // A feszültség nyila (Dr. Lilik Ferenc jelölése): a nagyobb potenciáltól (talp) a kisebb felé (hegy),
+        // a különbség éppen a forrásfeszültség.
+        const [high, low] = along > 0 ? [fromNode, toNode] : [toNode, fromNode];
         expect(sol.nodeVoltage[high]! - sol.nodeVoltage[low]!).toBeCloseTo(el.value, 9);
       }
       if (el.kind === 'I') {

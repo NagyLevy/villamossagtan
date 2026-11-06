@@ -4,7 +4,8 @@
 // Jelek (IEC: a körön átmenő vonal azt mutatja, mivé válik a forrás kiiktatva):
 //  - Ellenállás: téglalap, a vezeték a rövid oldalakba csatlakozik.
 //  - Feszültségforrás: kör, rajta a vezeték irányában átmenő egyenes (kiiktatva rövidzár);
-//    mellette vékony, nyitott hegyű nyíl a vezetékkel párhuzamosan, a magasabb potenciál felé. Nincs +/− jel.
+//    mellette vékony, nyitott hegyű nyíl a vezetékkel párhuzamosan: a feszültség nyila, a nagyobb
+//    potenciáltól a kisebb felé (mint az ellenállásokon eső feszültségé). Nincs +/− jel.
 //  - Áramforrás: kör, rajta a vezetékre merőleges egyenes (kiiktatva szakadás);
 //    mellette nyíl tömör, kitöltött heggyel, az áram irányába.
 //  - Tekercs: félkörívek sora; kondenzátor: két párhuzamos lemez; kapcsoló: ferde kar.
