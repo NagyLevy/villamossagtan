@@ -79,10 +79,10 @@ export function reverseElements(els: CircuitElement[]): CircuitElement[] {
 }
 
 export function makeElement(kind: ElementKind, value: number, dir: 1 | -1 = 1): CircuitElement {
-  return { id: '', kind, value, dir: kind === 'R' ? 1 : dir };
+  return { id: '', kind, value, dir: kind === 'V' || kind === 'I' ? dir : 1 };
 }
 
-const PREFIX: Record<ElementKind, string> = { R: 'R', V: 'Ug', I: 'Ig' };
+const PREFIX: Record<ElementKind, string> = { R: 'R', V: 'Ug', I: 'Ig', L: 'L', C: 'C', K: 'K' };
 
 /**
  * Végleges forma: az elemek olvasási sorrendben (fentről lefelé, balról jobbra) kapnak azonosítót
@@ -100,7 +100,7 @@ export function finalize(c: Circuit): Circuit {
     const b = mid(v);
     return a.y - b.y || a.x - b.x;
   });
-  const counters: Record<ElementKind, number> = { R: 0, V: 0, I: 0 };
+  const counters: Record<ElementKind, number> = { R: 0, V: 0, I: 0, L: 0, C: 0, K: 0 };
   const branches = sorted.map((b, i) => ({
     ...b,
     id: `b${i + 1}`,

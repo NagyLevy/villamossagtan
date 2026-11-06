@@ -3007,3 +3007,583 @@ html.lite .fx-value.is-final {
     transition: none;
   }
 }
+
+/* ═════════ Új keret: módok, választó, időre, próbavizsga, napi, beállítások ═════════ */
+
+.toolbar {
+  justify-content: flex-start;
+}
+
+.toolbar > .toolbar-group {
+  margin-left: auto;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.viewer {
+  display: flex;
+  flex-direction: column;
+}
+
+.banner-slot:empty {
+  display: none;
+}
+
+.banner-slot {
+  margin-bottom: 20px;
+}
+
+/* Témakör és nehézség: egy sor, felirattal. */
+.mode-bar {
+  margin-bottom: 22px;
+}
+
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 16px;
+}
+
+.picker-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.picker-hint {
+  font-size: 13px;
+  color: var(--ink-2);
+  padding-bottom: 8px;
+}
+
+.problem-meta .meta-text {
+  flex: 1 1 auto;
+}
+
+/* Adatok (ω, u(t)) a cím alatt. */
+.given {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 6px;
+}
+
+.given-item {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--fill);
+  font-size: 15px;
+}
+
+/* A lejátszó a rajz alatt, a kártyán belül: nem takar ki semmit. */
+.canvas-card .dock {
+  position: static;
+  transform: none;
+  margin: 4px auto 14px;
+  max-width: 640px;
+  box-shadow: none;
+  border: 1px solid var(--hair);
+  background: var(--surface-2);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.canvas-card .dock > .stepbar {
+  flex: 1 1 auto;
+  min-width: 80px;
+}
+
+.canvas-card .dock.is-idle {
+  opacity: 0.55;
+}
+
+.main {
+  padding-bottom: 80px;
+}
+
+/* Módszerválasztó a panel tetején. */
+.method-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.method-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.alt-label {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* Válaszmezők: felirat + mező + mértékegység, több mező egymás mellett. */
+.answer-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 180px;
+  min-width: 0;
+  position: relative;
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.field .answer-input {
+  width: 100%;
+  padding-right: 58px;
+}
+
+.field-unit {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+.answer-input.is-ok {
+  border-color: var(--result);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--result) 18%, transparent);
+}
+
+.answer-input.is-bad {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.answer-row:empty {
+  display: none;
+}
+
+.verdict-answer {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Indító kártya (időre, próbavizsga). */
+.gate {
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 920px;
+}
+
+.gate-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+
+.gate-info {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.55;
+  max-width: 70ch;
+}
+
+.gate-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+}
+
+/* Futó óra sávja (időre, próbavizsga): fent ragad. */
+.run-bar {
+  position: sticky;
+  top: 62px;
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 18px;
+  margin-bottom: 22px;
+}
+
+.run-bar .timer {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.run-bar.is-urgent .timer {
+  color: var(--danger);
+}
+
+.timer-status {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.run-result {
+  font-weight: 700;
+}
+
+.run-result.is-good {
+  color: var(--result);
+}
+
+.run-result.is-bad {
+  color: var(--danger);
+}
+
+/* Próbavizsga */
+.exam-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.exam-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 16px 18px;
+  border-radius: var(--r-lg);
+  border: 1.5px solid var(--hair);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--t-fast), background-color var(--t-fast);
+}
+
+.exam-card:hover {
+  background: var(--fill);
+}
+
+.exam-card.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.exam-name {
+  font-weight: 700;
+}
+
+.exam-time {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.exam-desc {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.exam-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exam-tab {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1.5px solid var(--hair);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.exam-tab.is-filled {
+  background: var(--fill-2);
+}
+
+.exam-tab.is-current {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.exam-tab.is-good {
+  background: color-mix(in srgb, var(--result) 20%, var(--surface));
+}
+
+.exam-tab.is-part {
+  background: color-mix(in srgb, #f5a623 22%, var(--surface));
+}
+
+.exam-tab.is-bad {
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+}
+
+.exam-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.exam-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.exam-summary {
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.exam-answer {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* Napi feladatok */
+.daily {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.daily-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 24px;
+}
+
+h2.daily-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+}
+
+.daily-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--ink-2);
+  align-items: center;
+}
+
+.daily-tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.daily-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 6px;
+  border-radius: 999px;
+  border: 1.5px solid var(--hair);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.daily-chip.is-current {
+  border-color: var(--accent);
+}
+
+.daily-chip-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--fill);
+  font-size: 12px;
+}
+
+.daily-chip.is-done .daily-chip-num {
+  background: var(--result);
+  color: #fff;
+}
+
+.daily-tip {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  max-width: 90ch;
+}
+
+.daily-tip strong {
+  color: var(--ink);
+}
+
+/* Beállítások panel */
+.sheet {
+  border: 0;
+  padding: 0;
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  color: var(--ink);
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100vh - 48px);
+  box-shadow: var(--shadow-float);
+}
+
+.sheet::backdrop {
+  background: rgb(0 0 0 / 0.32);
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 6px 24px;
+}
+
+.sheet-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.sheet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--hair);
+}
+
+.sheet > .seg {
+  margin: 0 24px 12px;
+}
+
+.sheet-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sheet-label {
+  font-weight: 600;
+}
+
+.sheet-desc {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+
+.sheet .switch-label:empty {
+  display: none;
+}
+
+.sheet-keys {
+  margin: 0;
+  padding: 14px 24px 20px;
+  border-top: 1px solid var(--hair);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+@media (max-width: 640px) {
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .toolbar > .brand {
+    flex: 1 1 auto;
+  }
+
+  .toolbar > .toolbar-group {
+    order: 1;
+    width: auto;
+    margin-left: auto;
+  }
+
+  .toolbar > .seg {
+    order: 2;
+  }
+
+  .run-bar {
+    top: 0;
+    padding: 10px 12px;
+  }
+
+  .gate {
+    padding: 22px 16px;
+  }
+
+  .gate-title {
+    font-size: 22px;
+  }
+
+  .canvas-card .dock {
+    margin: 2px 0 6px;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .field {
+    flex-basis: 140px;
+  }
+
+  .sheet-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .exam-bar .exam-tabs {
+    order: 5;
+    width: 100%;
+  }
+}
+
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  .settings-btn span {
+    display: none;
+  }
+}
+
+.exam-table th,
+.exam-table td {
+  text-align: left;
+}
+
+.exam-table td:last-child {
+  text-align: right;
+}

@@ -7,6 +7,7 @@
 //    mellette vékony, nyitott hegyű nyíl a vezetékkel párhuzamosan, a magasabb potenciál felé. Nincs +/− jel.
 //  - Áramforrás: kör, rajta a vezetékre merőleges egyenes (kiiktatva szakadás);
 //    mellette nyíl tömör, kitöltött heggyel, az áram irányába.
+//  - Tekercs: félkörívek sora; kondenzátor: két párhuzamos lemez; kapcsoló: ferde kar.
 
 import type { Circuit } from '../solver/model';
 import { computeLayout, SIZE, type ElementGeom, type Layout, type Pt } from './layout';
@@ -25,6 +26,8 @@ const STYLE = `
 .circuit .wire{fill:none;stroke:var(--circuit-ink,#1d1d1f);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .circuit .sym{fill:var(--circuit-paper,#fff);stroke:var(--circuit-ink,#1d1d1f);stroke-width:1.6}
 .circuit .sym-line{fill:none;stroke:var(--circuit-ink,#1d1d1f);stroke-width:1.6;stroke-linecap:round}
+.circuit .hit{fill:transparent;stroke:none}
+.circuit .sym-plate{stroke-width:2.4;stroke-linecap:butt}
 .circuit .head{fill:var(--circuit-ink,#1d1d1f);stroke:none}
 .circuit .src-arrow{fill:none;stroke:var(--circuit-ink,#1d1d1f);stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .circuit .src-arrow-current{stroke-width:1.5}
@@ -73,6 +76,67 @@ function circleWithLine(g: ElementGeom, along: boolean): string {
     `<circle class="sym" cx="${f(c.x)}" cy="${f(c.y)}" r="${r}"/>` +
     `<path class="sym-line" d="M${f(c.x - v.x * r)} ${f(c.y - v.y * r)}L${f(c.x + v.x * r)} ${f(c.y + v.y * r)}"/>`
   );
+}
+
+/** Tekercs (IEC): négy egymás utáni félkörív a vezeték mentén, a rajz külső oldala felé domborodva. */
+function inductorSvg(g: ElementGeom): string {
+  const { center: c, axis } = g;
+  const half = SIZE.inductorLen / 2;
+  const n = 4;
+  const r = half / n;
+  const start = { x: c.x - axis.x * half, y: c.y - axis.y * half };
+  let d = `M${f(start.x)} ${f(start.y)}`;
+  // A félkörívek vízszintes ágon felfelé, függőlegesen jobbra domborodnak.
+  const sweep = axis.x !== 0 ? 1 : 0;
+  for (let i = 1; i <= n; i++) {
+    const p = { x: start.x + axis.x * 2 * r * i, y: start.y + axis.y * 2 * r * i };
+    d += `A${f(r)} ${f(r)} 0 0 ${sweep} ${f(p.x)} ${f(p.y)}`;
+  }
+  return `<path class="sym-line sym-coil" d="${d}"/><rect class="hit" x="${f(g.body.x1)}" y="${f(g.body.y1)}" width="${f(g.body.x2 - g.body.x1)}" height="${f(g.body.y2 - g.body.y1)}"/>`;
+}
+
+/** Kondenzátor: két párhuzamos lemez, a vezetékre merőlegesen. */
+function capacitorSvg(g: ElementGeom): string {
+  const { center: c, axis } = g;
+  const gap = SIZE.capGap / 2;
+  const w = SIZE.capPlate / 2;
+  const perp = { x: -axis.y, y: axis.x };
+  const plate = (k: number) => {
+    const m = { x: c.x + axis.x * gap * k, y: c.y + axis.y * gap * k };
+    return `M${f(m.x - perp.x * w)} ${f(m.y - perp.y * w)}L${f(m.x + perp.x * w)} ${f(m.y + perp.y * w)}`;
+  };
+  return `<path class="sym-line sym-plate" d="${plate(-1)}${plate(1)}"/><rect class="hit" x="${f(g.body.x1)}" y="${f(g.body.y1)}" width="${f(g.body.x2 - g.body.x1)}" height="${f(g.body.y2 - g.body.y1)}"/>`;
+}
+
+/** Kapcsoló (nyitott állás): két kivezetőpont, köztük ferde kar. */
+function switchSvg(g: ElementGeom): string {
+  const { center: c, axis } = g;
+  const half = SIZE.switchLen / 2;
+  const a = { x: c.x - axis.x * half, y: c.y - axis.y * half };
+  const b = { x: c.x + axis.x * half, y: c.y + axis.y * half };
+  const perp = axis.x !== 0 ? { x: 0, y: -1 } : { x: 1, y: 0 };
+  const tip = { x: b.x - axis.x * 3 + perp.x * 11, y: b.y - axis.y * 3 + perp.y * 11 };
+  return (
+    `<path class="sym-line" d="M${f(a.x)} ${f(a.y)}L${f(tip.x)} ${f(tip.y)}"/>` +
+    `<circle class="terminal" cx="${f(a.x)}" cy="${f(a.y)}" r="2.6"/><circle class="terminal" cx="${f(b.x)}" cy="${f(b.y)}" r="2.6"/>`
+  );
+}
+
+function symbolSvg(g: ElementGeom): string {
+  switch (g.el.kind) {
+    case 'R':
+      return resistorSvg(g);
+    case 'V':
+      return voltageSourceSvg(g);
+    case 'I':
+      return currentSourceSvg(g);
+    case 'L':
+      return inductorSvg(g);
+    case 'C':
+      return capacitorSvg(g);
+    case 'K':
+      return switchSvg(g);
+  }
 }
 
 function arrowDir(a: NonNullable<ElementGeom['arrow']>): Pt {
@@ -130,7 +194,7 @@ export function renderCircuitSvg(c: Circuit, opts: RenderOptions = {}, layout: L
   parts.push('<g class="elements">');
   for (const g of layout.elements) {
     const cls = ['el', `el-${g.el.kind}`, targets.has(g.el.id) ? 'is-target' : '', dimmed.has(g.el.id) ? 'is-dimmed' : ''].filter(Boolean).join(' ');
-    const sym = g.el.kind === 'R' ? resistorSvg(g) : g.el.kind === 'V' ? voltageSourceSvg(g) : currentSourceSvg(g);
+    const sym = symbolSvg(g);
     const l = g.label;
     parts.push(
       `<g class="${cls}" data-id="${esc(g.el.id)}">${sym}<text class="label" x="${f(l.x)}" y="${f(l.y)}" text-anchor="${l.anchor}">${esc(l.text)}</text></g>`,

@@ -3,48 +3,57 @@
 
 import type { Topic } from '../generator/generate';
 import type { Level } from '../generator/values';
-
+import type { AcLevel, AcTopic } from '../ac/problems';
 import type { DailyLevel } from '../daily/schedule';
 import type { MethodId } from '../methods/types';
+import type { ExamKind } from '../tasks';
+import type { Domain } from '../tasks/types';
 
 export type { MethodId };
 export type StarDeltaMode = 'delta-csillag' | 'csillag-delta' | 'veletlen';
 export type ThemeChoice = 'system' | 'light' | 'dark';
+/** Gyakorlás, időre megoldás, próbavizsga, napi feladatsor. */
+export type Mode = 'gyakorlas' | 'idore' | 'vizsga' | 'napi';
 
 export interface Settings {
-  topic: Topic;
-  level: Level;
+  domain: Domain;
+  mode: Mode;
+  dcTopic: Topic;
+  dcLevel: Level;
+  acTopic: AcTopic;
+  acLevel: AcLevel;
   method: MethodId;
   starDelta: boolean;
   starDeltaMode: StarDeltaMode;
   theme: ThemeChoice;
   speed: number;
-  /** Gyakorló: a megoldás bármikor megnézhető; vizsga: csak beadás után. */
-  mode: 'gyakorlo' | 'vizsga';
-  examTimer: boolean;
-  /** Napi kihívás mód és a választott nehézség. */
-  dailyActive: boolean;
-  dailyLevel: DailyLevel;
   /** Áramkör újrarajzolása: összevonásonként egyszerűsödő rajz (csak ha be van kapcsolva). */
   redraw: boolean;
+  /** Időre megoldásnál a rendelkezésre álló idő (perc). */
+  timedMinutes: number;
+  dailyLevel: DailyLevel;
+  examKind: ExamKind;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  topic: 'oszto',
-  level: 'alapozo',
-  method: 'hurokaram',
+  domain: 'dc',
+  mode: 'gyakorlas',
+  dcTopic: 'oszto',
+  dcLevel: 'alapozo',
+  acTopic: 'ac-impedancia',
+  acLevel: 'konnyu',
+  method: 'redukcio',
   starDelta: false,
   starDeltaMode: 'veletlen',
   theme: 'system',
   speed: 1,
-  mode: 'gyakorlo',
-  examTimer: true,
   redraw: false,
-  dailyActive: true,
+  timedMinutes: 10,
   dailyLevel: 'kozepes',
+  examKind: 'dc',
 };
 
-const KEY = 'villamossagtan.settings.v1';
+const KEY = 'villamossagtan.settings.v2';
 
 export function loadSettings(): Settings {
   try {
@@ -67,18 +76,17 @@ export function saveSettings(s: Settings): void {
 export interface MethodInfo {
   id: MethodId;
   label: string;
-  badge?: string;
 }
 
-/** A módszerek sorrendje a menüben: a csomóponti potenciál a végén, "most tanulom" jelöléssel. */
+/** A módszerek sorrendje a választóban. */
 export function methodList(starDelta: boolean): MethodInfo[] {
   return [
-    { id: 'redukcio', label: 'Redukció' },
-    { id: 'kirchhoff', label: 'Kirchhoff' },
-    { id: 'hurokaram', label: 'Hurokáram' },
+    { id: 'redukcio', label: 'Redukció (eredő + osztók)' },
+    { id: 'kirchhoff', label: 'Kirchhoff-törvények' },
+    { id: 'hurokaram', label: 'Hurokáramok' },
+    { id: 'csomoponti', label: 'Csomóponti potenciálok' },
     { id: 'szuperpozicio', label: 'Szuperpozíció' },
-    { id: 'thevenin', label: 'Thevenin' },
+    { id: 'thevenin', label: 'Thevenin / Norton' },
     ...(starDelta ? [{ id: 'csillag-delta' as const, label: 'Csillag-delta' }] : []),
-    { id: 'csomoponti', label: 'Csomóponti', badge: 'most tanulom' },
   ];
 }

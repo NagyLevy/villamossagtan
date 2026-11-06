@@ -72,7 +72,7 @@ export function toNetlist(c: Circuit): NetlistMapping {
     br.elements.forEach((el, i) => {
       const n1 = nodes[i]!;
       const n2 = nodes[i + 1]!;
-      const [a, b] = el.kind !== 'R' && el.dir === -1 ? [n2, n1] : [n1, n2];
+      const [a, b] = (el.kind === 'V' || el.kind === 'I') && el.dir === -1 ? [n2, n1] : [n1, n2];
       elements.push({ id: el.id, kind: el.kind, value: el.value, a, b });
       elementNodes.set(el.id, { a, b });
     });

@@ -1,47 +1,42 @@
-// Napi kihívás: minden nap (helyi idő szerint 00:00-kor) új feladatsor, ugyanaz a nap mindig
-// ugyanazt adja. Az első héten csak szuperpozíció, utána vegyesen, minden típusból egy feladat.
-// Tiszta függvények (tesztelhetők).
+// Napi feladatsor: minden nap (helyi idő szerint 00:00-kor) új sor, ugyanaz a nap mindig ugyanazt
+// adja (mindenkinek ugyanazt, így a csoport ugyanazokon a feladatokon dolgozhat). Pontozás nincs,
+// csak az, hogy melyik feladat van már kész. Tiszta függvények (tesztelhetők).
 
 import type { Topic } from '../generator/generate';
 import type { Level } from '../generator/values';
 import type { MethodId } from '../methods/types';
+import type { AcLevel, AcTopic } from '../ac/problems';
+import type { Domain } from '../tasks/types';
 
-/** Az első nap (hétfő) és az első ZH napja. */
-export const START_DAY = '2026-11-02';
-export const ZH_DAY = '2026-11-16';
-/** Eddig (ezt a napot már nem beleértve) tart a szuperpozíció hét. */
-export const MIXED_FROM = '2026-11-09';
-
-export type DailyLevel = 'free' | 'kozepes' | 'tryhard' | 'kurva';
+export type DailyLevel = 'konnyu' | 'kozepes' | 'nehez' | 'zh';
 
 export const DAILY_LEVELS: { id: DailyLevel; label: string }[] = [
-  { id: 'free', label: 'Free elo' },
+  { id: 'konnyu', label: 'Könnyű' },
   { id: 'kozepes', label: 'Közepes' },
-  { id: 'tryhard', label: 'Tryhard' },
-  { id: 'kurva', label: 'Kurva nehéz' },
+  { id: 'nehez', label: 'Nehéz' },
+  { id: 'zh', label: 'ZH-szint' },
 ];
 
 export interface DailyTask {
   /** A napon belül egyedi azonosító (a haladás ehhez tárolódik). */
   id: string;
   title: string;
-  topic: Topic;
-  level: Level;
+  domain: Domain;
   seed: string;
-  /** A módszer, amivel ezt a feladatot gyakoroljuk. */
-  method: MethodId;
   /** Rövid módszer-tipp a feladathoz. */
   tip: string;
-  /** ZH-szinten a többforrásos feladatok mindig a "sok forrás" típusból jönnek. */
-  zhType?: 'sok-forras';
+  /** Egyenáramú feladat: témakör, szint és a gyakorolt módszer. */
+  dc?: { topic: Topic; level: Level; method: MethodId; zhType?: 'sok-forras' };
+  /** Szinuszos / bekapcsolási feladat. */
+  ac?: { topic: AcTopic; level: AcLevel };
 }
 
 export interface DailyChallenge {
   day: string;
-  theme: string;
+  domain: Domain;
   level: DailyLevel;
   tasks: DailyTask[];
-  /** A nap tudnivalója (ZH-felkészülés). */
+  /** A nap tudnivalója. */
   studyTip: string;
 }
 
@@ -61,22 +56,22 @@ export function daysBetween(a: string, b: string): number {
   return Math.round((parseDay(b).getTime() - parseDay(a).getTime()) / 86_400_000);
 }
 
-/** Ennyi idő van hátra a következő napi kihívásig (helyi éjfél). */
+/** Ennyi idő van hátra a következő napi feladatsorig (helyi éjfél). */
 export function msUntilNext(now: Date): number {
   const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
   return next.getTime() - now.getTime();
 }
 
-export function daysUntilZh(now: Date): number {
-  return daysBetween(dayKey(now), ZH_DAY);
+/** Nehézség → egyenáramú generátorszint; az alapozó témaköröknél a legkönnyebb fokozat alapozó. */
+function dcLevel(lvl: DailyLevel, basic: boolean): Level {
+  if (lvl === 'konnyu') return basic ? 'alapozo' : 'konnyu';
+  if (lvl === 'kozepes') return 'kozepes';
+  if (lvl === 'nehez') return 'nehez';
+  return basic ? 'nehez' : 'zh';
 }
 
-/** Nehézség → generátorszint; az alapozó témaköröknél a legkönnyebb fokozat alapozó. */
-function levelFor(lvl: DailyLevel, basic: boolean): Level {
-  if (lvl === 'free') return basic ? 'alapozo' : 'konnyu';
-  if (lvl === 'kozepes') return 'kozepes';
-  if (lvl === 'tryhard') return 'nehez';
-  return basic ? 'nehez' : 'zh';
+function acLevel(lvl: DailyLevel): AcLevel {
+  return lvl === 'konnyu' ? 'konnyu' : lvl === 'kozepes' ? 'kozepes' : 'nehez';
 }
 
 const TIPS: Record<string, string> = {
@@ -88,39 +83,53 @@ const TIPS: Record<string, string> = {
   hurokaram: 'Ablakonként egy hurokáram, mind ugyanabba az irányba. Közös ágban a két hurokáram különbsége folyik. Áramforrásnál kötött hurok vagy szuperhurok.',
   csomoponti: 'Válassz referenciát (0 V), a feszültségforrással rögzített csomópontokat írd fel előre. Minden ismeretlen csomópontra: kifolyó áramok összege nulla.',
   thevenin: 'Rth: források kiiktatva, A–B felől az eredő. Uth: üresjárás. In: rövidzár. Ellenőrzés: Uth = Rth · In.',
+  impedancia: 'Előbb minden tekercs és kondenzátor impedanciáját írd fel (jωL, −j/(ωC)), aztán ugyanúgy vonj össze, mint ellenállásokkal, csak komplex számokkal.',
+  fazor: 'Osztóknál a komplex számok arányával szorozz. Szorzásnál az abszolút értékek szorzódnak, a szögek összeadódnak; osztásnál a szögek kivonódnak.',
+  teljesitmeny: 'Komplex csúcsértékekkel S = ½·Û·Î*. P a valós, Q a képzetes rész. A cos φ az eredő impedancia szögéből jön.',
+  helyettesito: 'Zth: a generátor kiiktatva, a kapcsok felől az eredő impedancia. Üresjárási feszültség: terheletlen kapcsokon, osztókkal.',
+  rezonancia: 'ω₀ = 1/√(LC). Soros körben B = R/L, párhuzamos körben B = 1/(RC); Q₀ = ω₀/B.',
+  tranziens: 'Három dolog kell: τ (Thevenin-ellenállásból), az állandósult érték (L rövidzár, C szakadás) és a kezdeti érték (energiamentesnél 0).',
 };
 
-const STUDY_TIPS = [
-  'Szuperpozíciónál a teljesítmény NEM adható össze: előbb az áramot összegezd, és abból számolj teljesítményt.',
+const STUDY_TIPS_DC = [
   'A kiiktatott feszültségforrás rövidzár, a kiiktatott áramforrás szakadás. Ezt mindig rajzold át, mielőtt számolsz!',
   'Áramforrással sorba kötött ellenállás nem változtat az ág áramán: ZH-ban ez gyakori trükk.',
   'Feszültségforrással közvetlenül párhuzamos ellenállás feszültsége a forrás feszültsége, a többi elemre nincs hatása.',
-  'Előjel! A ZH a nagyságot kéri, de a részáramokat előjelesen kell összeadni, különben rossz lesz a nagyság is.',
-  'Ha két forrás van, két részáramkör. Ha három, három. Ne próbáld egyszerre többet számolni.',
+  'Szuperpozíciónál a teljesítmény NEM adható össze: előbb az áramot összegezd, és abból számolj teljesítményt.',
   'Ellenőrzés: a teljesítménymérleg (minden P összege nulla) gyorsan megmutatja, ha valahol elszámoltad.',
-  'Csomóponti módszernél az ismeretlenek száma: csomópontok − rögzítettek − 1. Ezzel kezdd!',
   'Hurokáramnál a közös ágban folyó áram a két hurokáram különbsége. A végén mindig ágáramot számolj belőlük.',
-  'Thevenin: ha az Rth-nál maradt áramforrás, az szakadás, vagyis az az ág kiesik az eredőből.',
-  'Eredő ellenállásnál mindig onnan nézd, ahonnan kérdezik: a mérési pont felé haladva vonj össze.',
   'Osztó: U_x = U · R_x / ΣR soros ágban; két párhuzamos ágnál I_1 = I · R_2 / (R_1 + R_2).',
-  'Kirchhoff huroktörvény: ha a körüljárás a forrás nyila irányában halad át rajta, a forrás „hajtja” a kört.',
-  'Utolsó nap a ZH előtt: csinálj meg egy Kurva nehéz kihívást időre, és nézd meg, melyik lépésnél lassulsz le.',
+  'Csomóponti módszernél az ismeretlenek száma: csomópontok − feszültségforrással rögzítettek − 1. Ezzel kezdd!',
+  'Thevenin: ha az Rth-nál maradt áramforrás, az szakadás, vagyis az az ág kiesik az eredőből.',
+  'Időre gyakorolj: nézd meg, melyik lépésnél lassulsz le, és azt gyakorold külön.',
 ];
 
-/** A nap kihívása az adott nehézségen. */
-export function dailyChallenge(date: Date, lvl: DailyLevel): DailyChallenge {
+const STUDY_TIPS_AC = [
+  'Osztó komplexben is ugyanúgy megy: U_x = U · Z_x / ΣZ, csak komplex számokkal számolsz.',
+  'Tekercs: egyenáramon rövidzár, kondenzátor: egyenáramon szakadás. Bekapcsolásnál ebből jön az állandósult állapot.',
+  'Komplex csúcsértékből az időfüggvény: u(t) = |Û|·cos(ωt + φ), ahol φ az Û szöge.',
+  'A meddő teljesítmény induktív fogyasztónál pozitív, kapacitívnál negatív. Kompenzálni az ellentétes jellegű elemmel lehet.',
+  'Effektív érték = csúcsérték / √2. Ha a képletben effektív értékek vannak, nem kell 2-vel osztani.',
+  'Időre gyakorolj: nézd meg, melyik lépésnél lassulsz le, és azt gyakorold külön.',
+];
+
+/** A nap feladatsora az adott területen és nehézségen. */
+export function dailyChallenge(date: Date, lvl: DailyLevel, domain: Domain = 'dc'): DailyChallenge {
   const day = dayKey(date);
-  const n = Math.max(0, daysBetween(START_DAY, day));
-  const studyTip = STUDY_TIPS[n % STUDY_TIPS.length]!;
-  const seed = (i: number) => `D${day}-${lvl}-${i}`;
-  if (day < MIXED_FROM) {
-    // Szuperpozíció hét: három, egyre nagyobb feladat.
-    const tasks: DailyTask[] = [0, 1, 2].map((i) => {
-      // Free elo: két könnyű, egy közepes; a többi szint egyenletesen a saját fokozatán.
-      const level: Level = lvl === 'free' ? (i < 2 ? 'konnyu' : 'kozepes') : levelFor(lvl, false);
-      return { id: `szup-${i}`, title: `Szuperpozíció ${i + 1}`, topic: level === 'zh' ? 'zh' : 'tobbforras', level, seed: seed(i), method: 'szuperpozicio', tip: TIPS.szuperpozicio!, zhType: level === 'zh' ? 'sok-forras' : undefined };
-    });
-    return { day, theme: 'Szuperpozíció hét', level: lvl, tasks, studyTip };
+  const n = Math.abs(daysBetween('2026-01-01', day));
+  const tips = domain === 'ac' ? STUDY_TIPS_AC : STUDY_TIPS_DC;
+  const studyTip = tips[n % tips.length]!;
+  const seed = (i: number) => `D${day}-${domain}-${lvl}-${i}`;
+  if (domain === 'ac') {
+    const list: { id: AcTopic; title: string; tip: string }[] = [
+      { id: 'ac-impedancia', title: 'Eredő impedancia', tip: TIPS.impedancia! },
+      { id: 'ac-fazor', title: 'Fazor és időfüggvény', tip: TIPS.fazor! },
+      { id: 'ac-teljesitmeny', title: 'Teljesítmény', tip: TIPS.teljesitmeny! },
+      { id: 'ac-helyettesito', title: 'Thevenin / Norton', tip: TIPS.helyettesito! },
+      { id: 'ac-rezonancia', title: 'Rezgőkör', tip: TIPS.rezonancia! },
+      { id: 'tranziens', title: 'Bekapcsolás', tip: TIPS.tranziens! },
+    ];
+    return { day, domain, level: lvl, studyTip, tasks: list.map((t, i) => ({ id: t.id, title: t.title, domain, seed: seed(i), tip: t.tip, ac: { topic: t.id, level: acLevel(lvl) } })) };
   }
   const mixed: { id: string; title: string; topic: Topic; method: MethodId; basic: boolean; tip: string }[] = [
     { id: 'eredo', title: 'Eredő ellenállás', topic: 'eredo', method: 'redukcio', basic: true, tip: TIPS.redukcio! },
@@ -132,10 +141,10 @@ export function dailyChallenge(date: Date, lvl: DailyLevel): DailyChallenge {
     { id: 'thevenin', title: 'Thevenin és Norton', topic: 'thevenin', method: 'thevenin', basic: true, tip: TIPS.thevenin! },
   ];
   const tasks: DailyTask[] = mixed.map((m, i) => {
-    const level = levelFor(lvl, m.basic);
+    const level = dcLevel(lvl, m.basic);
     // ZH-szinten a többforrásos feladat a ZH "sok forrás" típusa.
     const topic: Topic = m.topic === 'tobbforras' && level === 'zh' ? 'zh' : m.topic;
-    return { id: m.id, title: m.title, topic, level, seed: seed(i), method: m.method, tip: m.tip, zhType: topic === 'zh' ? 'sok-forras' : undefined };
+    return { id: m.id, title: m.title, domain, seed: seed(i), tip: m.tip, dc: { topic, level, method: m.method, zhType: topic === 'zh' ? 'sok-forras' : undefined } };
   });
-  return { day, theme: 'Vegyes nap', level: lvl, tasks, studyTip };
+  return { day, domain, level: lvl, tasks, studyTip };
 }

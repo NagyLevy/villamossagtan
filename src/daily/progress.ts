@@ -1,20 +1,21 @@
-// A napi kihívás haladása (időmérés, hibák, tippek) és a sorozat. Böngészőben tárolva.
+// A napi feladatsor haladása a böngészőben (localStorage): melyik feladat van kész, mennyi idő alatt.
+// Pontozás nincs; ha a tároló nem elérhető, a haladás csak az oldal újratöltéséig él.
 
-import type { DayRecords, TaskRecord } from './score';
-import { dayKey, type DailyLevel } from './schedule';
+import type { Domain } from '../tasks/types';
+import type { DailyLevel } from './schedule';
 
-/** nap → nehézség → feladat → rekord. */
-export type ProgressData = Record<string, DayRecords>;
-
-// v3: a Start gomb bevezetésekor mindenki haladása egyszer nullázódott (a régi óra magától indult).
-const KEY = 'villamossagtan.daily.v3';
-let memory: ProgressData = {};
-try {
-  localStorage.removeItem('villamossagtan.daily.v2');
-  localStorage.removeItem('villamossagtan.ach.seen');
-} catch {
-  // A tárolás nem kötelező.
+export interface DoneRecord {
+  /** Mikor lett kész (ms). */
+  at: number;
+  /** Mennyi ideig tartott (másodperc), ha mértük. */
+  seconds?: number;
 }
+
+/** nap → "terület|nehézség" → feladat → rekord */
+export type ProgressData = Record<string, Record<string, Record<string, DoneRecord>>>;
+
+const KEY = 'villamossagtan.napi.v2';
+let memory: ProgressData = {};
 
 export function loadProgress(): ProgressData {
   try {
@@ -35,111 +36,26 @@ function save(data: ProgressData): void {
   }
 }
 
-/** A feladat rekordja; első megnyitáskor létrejön, és innen indul az óra (újratöltés nem nullázza). */
-export function openTask(day: string, lvl: DailyLevel, task: string, now = Date.now()): TaskRecord {
+export const bucketKey = (domain: Domain, level: DailyLevel) => `${domain}|${level}`;
+
+export function isDone(day: string, domain: Domain, level: DailyLevel, taskId: string): DoneRecord | undefined {
+  return loadProgress()[day]?.[bucketKey(domain, level)]?.[taskId];
+}
+
+export function markDone(day: string, domain: Domain, level: DailyLevel, taskId: string, seconds?: number): void {
   const data = loadProgress();
-  const l = ((data[day] ??= {})[lvl] ??= {});
-  if (!l[task]) {
-    l[task] = { opened: now, wrong: 0, tips: 0, trick: false, solution: false };
-    save(data);
-  }
-  return l[task]!;
-}
-
-export type TaskEvent = 'wrong' | 'tip' | 'trick' | 'solution' | 'solved';
-
-/** Esemény rögzítése egy feladaton. Megoldás után már semmi sem változtat rajta. */
-export function recordEvent(day: string, lvl: DailyLevel, task: string, ev: TaskEvent, now = Date.now()): TaskRecord {
-  const data = loadProgress();
-  const l = ((data[day] ??= {})[lvl] ??= {});
-  const r = (l[task] ??= { opened: now, wrong: 0, tips: 0, trick: false, solution: false });
-  if (r.solvedAt) return r;
-  if (ev === 'wrong') r.wrong++;
-  if (ev === 'tip') r.tips++;
-  if (ev === 'trick') r.trick = true;
-  if (ev === 'solution') r.solution = true;
-  if (ev === 'solved') r.solvedAt = now;
+  const bucket = ((data[day] ??= {})[bucketKey(domain, level)] ??= {});
+  if (!bucket[taskId]) bucket[taskId] = { at: Date.now(), ...(seconds !== undefined ? { seconds } : {}) };
   save(data);
-  return r;
 }
 
-/** Egy nap kész, ha valamelyik nehézségen az összes feladat meg van oldva. */
-export function dayDone(data: ProgressData, day: string, taskCount: (lvl: DailyLevel) => number): boolean {
-  const d = data[day];
-  if (!d) return false;
-  return (Object.keys(d) as DailyLevel[]).some((lvl) => {
-    const n = taskCount(lvl);
-    return n > 0 && Object.values(d[lvl] ?? {}).filter((r) => r.solvedAt).length >= n;
-  });
-}
-
-export function prevDay(key: string): string {
-  const [y, m, d] = key.split('-').map(Number) as [number, number, number];
-  return dayKey(new Date(y, m - 1, d - 1));
-}
-
-/** Sorozat a megadott napig bezárólag (ha az a nap nincs kész, az előző naptól számol). */
-export function streakAt(data: ProgressData, key: string, taskCount: (day: string, lvl: DailyLevel) => number): number {
-  let k = key;
-  if (!dayDone(data, k, (l) => taskCount(k, l))) k = prevDay(k);
-  let count = 0;
-  for (let guard = 0; guard < 400 && dayDone(data, k, (l) => taskCount(k, l)); guard++) {
-    count++;
-    k = prevDay(k);
+/** Hány nap egymás után (mától visszafelé) van legalább egy kész feladat. Ma még nem kell késznek lennie. */
+export function streak(data: ProgressData, today: string, dayKeys: (offset: number) => string): number {
+  const any = (d: string) => Object.values(data[d] ?? {}).some((b) => Object.keys(b).length > 0);
+  let n = any(today) ? 1 : 0;
+  for (let i = 1; i < 400; i++) {
+    if (!any(dayKeys(i))) break;
+    n++;
   }
-  return count;
-}
-
-export function streak(data: ProgressData, today: Date, taskCount: (day: string, lvl: DailyLevel) => number): number {
-  return streakAt(data, dayKey(today), taskCount);
-}
-
-// ───────── fiókhoz kötés ─────────
-
-const OWNER_KEY = 'villamossagtan.daily.owner';
-
-/** Kié a gépen tárolt haladás (fiók-azonosító), vagy null, ha vendégé. */
-export function progressOwner(): string | null {
-  try {
-    return localStorage.getItem(OWNER_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/** Két napló összefésülése: feladatonként a megoldott (vagy korábban megnyitott) rekord marad. */
-export function mergeProgress(a: ProgressData, b: ProgressData): ProgressData {
-  const out: ProgressData = JSON.parse(JSON.stringify(a)) as ProgressData;
-  for (const [day, levels] of Object.entries(b))
-    for (const [lvl, tasks] of Object.entries(levels ?? {}) as [DailyLevel, Record<string, TaskRecord>][])
-      for (const [task, r] of Object.entries(tasks ?? {})) {
-        const l = ((out[day] ??= {})[lvl] ??= {});
-        const mine = l[task];
-        if (!mine || (!mine.solvedAt && r.solvedAt) || (!!mine.solvedAt === !!r.solvedAt && r.opened < mine.opened)) l[task] = r;
-      }
-  return out;
-}
-
-/** Belépés után: a fiók haladása kerül a gépre (vendég-haladás összefésülve, másik fióké eldobva). */
-export function adoptProgress(owner: string, server: ProgressData): ProgressData {
-  const prev = progressOwner();
-  const local = loadProgress();
-  const data = prev === owner || prev === null ? mergeProgress(server, local) : server;
-  save(data);
-  try {
-    localStorage.setItem(OWNER_KEY, owner);
-  } catch {
-    // A tárolás nem kötelező.
-  }
-  return data;
-}
-
-/** Kilépéskor a gépről törlődik a haladás (a fiókban megmarad). */
-export function clearProgress(): void {
-  save({});
-  try {
-    localStorage.removeItem(OWNER_KEY);
-  } catch {
-    // A tárolás nem kötelező.
-  }
+  return n;
 }

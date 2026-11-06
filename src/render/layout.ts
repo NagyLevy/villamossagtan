@@ -16,6 +16,15 @@ export const SIZE = {
   resistorLen: 40,
   resistorWidth: 16,
   sourceRadius: 15,
+  /** Tekercs: négy félkörív a vezeték mentén. */
+  inductorLen: 40,
+  inductorWidth: 12,
+  /** Kondenzátor: két lemez, köztük rés. */
+  capGap: 8,
+  capPlate: 24,
+  /** Kapcsoló: ferde kar két kivezetés között. */
+  switchLen: 32,
+  switchWidth: 16,
   /** A forrásnyíl ilyen messze fut a vezeték vonalától. */
   arrowOffset: 25,
   arrowLen: 26,
@@ -110,6 +119,8 @@ export function textWidth(s: string, fontSize = SIZE.fontSize): number {
 
 /** Az elem felirata: érték előtaggal; ismeretlennél "?"; ha van neve, "név = érték". */
 export function elementLabelText(el: CircuitElement): string {
+  if (el.label) return el.label;
+  if (el.kind === 'K') return el.name ?? '';
   const value = el.unknown ? '?' : formatQuantity(el.value, elementUnit(el.kind));
   return el.name ? `${el.name} = ${value}` : value;
 }
@@ -179,6 +190,22 @@ function arrowFor(geom: Pick<ElementGeom, 'center' | 'axis' | 'orient' | 'el'>, 
   return { from, to, box: { x1: Math.min(from.x, to.x) - pad, y1: Math.min(from.y, to.y) - pad, x2: Math.max(from.x, to.x) + pad, y2: Math.max(from.y, to.y) + pad } };
 }
 
+/** Az elem jelének fél hossza (a vezeték mentén) és fél szélessége (rá merőlegesen). */
+export function symbolHalfSize(kind: CircuitElement['kind']): [number, number] {
+  switch (kind) {
+    case 'R':
+      return [SIZE.resistorLen / 2, SIZE.resistorWidth / 2];
+    case 'L':
+      return [SIZE.inductorLen / 2, SIZE.inductorWidth / 2];
+    case 'C':
+      return [SIZE.capGap / 2 + 1, SIZE.capPlate / 2];
+    case 'K':
+      return [SIZE.switchLen / 2, SIZE.switchWidth / 2];
+    default:
+      return [SIZE.sourceRadius, SIZE.sourceRadius];
+  }
+}
+
 export function computeLayout(c: Circuit): Layout {
   const px = toPx(c);
   const xs = [...px.values()].map((p) => p.x);
@@ -201,8 +228,7 @@ export function computeLayout(c: Circuit): Layout {
       const pitch = Math.min(ELEMENT_PITCH, len / k);
       const t = len / 2 + (i - (k - 1) / 2) * pitch;
       const center = { x: p.x + axis.x * t, y: p.y + axis.y * t };
-      const halfLen = el.kind === 'R' ? SIZE.resistorLen / 2 : SIZE.sourceRadius;
-      const halfWidth = el.kind === 'R' ? SIZE.resistorWidth / 2 : SIZE.sourceRadius;
+      const [halfLen, halfWidth] = symbolHalfSize(el.kind);
       const start = { x: center.x - axis.x * halfLen, y: center.y - axis.y * halfLen };
       const end = { x: center.x + axis.x * halfLen, y: center.y + axis.y * halfLen };
       wires.push({ a: cursor, b: start, branchId: br.id });
@@ -238,7 +264,7 @@ export function computeLayout(c: Circuit): Layout {
       g.orient === 'h' ? (g.center.y >= bounds.y2 ? 'below' : 'above') : g.center.x <= bounds.x1 ? 'left' : 'right';
     // Jelöltek: a felirat a kedvelt / ellentétes oldalon, a forrásnyíl a másikon; ha egyik sem fér el,
     // a nyíl és a felirat ugyanarra az oldalra kerül (a nyíl közelebb, a felirat a nyílon túl).
-    const isSource = g.el.kind !== 'R';
+    const isSource = g.el.kind === 'V' || g.el.kind === 'I';
     const candidates: { side: Side; arrowSide: Side; clearance: number }[] = [
       { side: preferred, arrowSide: OPPOSITE[preferred], clearance: g.halfWidth },
       { side: OPPOSITE[preferred], arrowSide: preferred, clearance: g.halfWidth },
@@ -260,7 +286,7 @@ export function computeLayout(c: Circuit): Layout {
     }
     if (!chosen) {
       const label = labelAt(text, g.center, preferred, g.halfWidth);
-      chosen = { label, arrow: g.el.kind !== 'R' ? arrowFor(g, OPPOSITE[preferred]) : undefined };
+      chosen = { label, arrow: isSource ? arrowFor(g, OPPOSITE[preferred]) : undefined };
       collisions.push(`${g.el.id} felirata nem fér el ütközés nélkül`);
     }
     placed.push(chosen.label.box);

@@ -54,7 +54,7 @@ export function initPerf(): void {
     const fps = await measureFps(2000);
     if (fps < 40) {
       setLite(true);
-      toast('Akadozott a rajzolás, ezért könnyített grafikára váltottam (a Statisztikánál visszakapcsolhatod).');
+      toast('Akadozott a rajzolás, ezért könnyített grafikára váltottam (a Beállításokban visszakapcsolhatod).');
     }
   }, 2500);
 }

@@ -1,11 +1,13 @@
 # Villamosságtan gyakorló
 
-Egyenáramú hálózatok (villamosságtan, 1. félév) gyakorló webapp: véletlen (seedből reprodukálható)
-feladatok, lépésenkénti, animált levezetés, napi kihívás pontozással és élő ranglista.
-Élő oldal: https://nagylevy.github.io/villamossagtan/ — két diák használja a ZH-ra készülve.
+Villamosságtan gyakorló webapp egyetemi elektronikai kurzus mellé (Villamosságtan 1: egyenáramú
+hálózatok; Villamosságtan 2: szinuszos hálózatok, rezgőkörök, bekapcsolási jelenségek; a tananyag
+Kuczmann–Kovács: Villamosságtan, Lineáris hálózatok elmélete I.). Véletlen (seedből reprodukálható)
+feladatok, lépésenkénti, animált levezetés. Négy mód: gyakorlás, időre, próbavizsga, napi feladatok.
+Nincs bejelentkezés, ranglista és pontrendszer. Élő oldal: https://nagylevy.github.io/villamossagtan/
 
-A felhasználók kezdő programozók és villamosságtant tanuló diákok: a felületen és a levezetésekben
-minden szöveg **magyarul**, egyszerűen, érthetően. A kód megjegyzései is magyarul vannak; ezt tartsd.
+A felhasználók villamosságtant tanuló diákok: a felületen és a levezetésekben minden szöveg
+**magyarul**, egyszerűen, érthetően. A kód megjegyzései is magyarul vannak; ezt tartsd.
 
 ## Futtatás, tesztek, publikálás
 
@@ -32,10 +34,10 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
 | `src/methods/` | Megoldási módszerek lépésenkénti levezetéssel: redukció, Kirchhoff, hurokáram, csomóponti potenciál, szuperpozíció, Thevenin/Norton, csillag-delta. `fit.ts`: melyik feladat melyik módszerhez való. `linsolve.ts`: egyenletrendszer levezetése. `redraw.ts`: újrarajzolt áramkörök. |
 | `src/simplify/` | Soros-párhuzamos felismerés, csillag-delta átalakítás keresése. |
 | `src/render/` | SVG-rajzolás (`svg.ts`, `layout.ts`), kiemelések (`overlay.ts`), áramlás-animáció (`flow.ts`). |
-| `src/ui/` | A felület (sima TypeScript, keretrendszer nélkül): `app.ts` a fő vezérlő, `daily.ts` napi kihívás, `scoreFx.ts` pontozás-animáció, `leaderboardView.ts` ranglista, `login.ts` belépés. |
-| `src/daily/` | Napi kihívás: menetrend (`schedule.ts`), napi feladat (`problem.ts`), haladás, pontozás, achievementek. |
-| `src/online/` | Supabase: belépés és élő ranglista (`league.ts`). |
-| `supabase/schema.sql` | Az adatbázis (fiókok, ranglista, belépő függvények). |
+| `src/ac/` | Szinuszos és bekapcsolási feladatok: komplex számok (`complex.ts`), független komplex MNA (`mna.ts`, az „igazság”), létrahálózat és osztólánc (`ladder.ts`), levezetés-építőkockák (`derive.ts`), feladatgenerátor (`problems.ts`). |
+| `src/tasks/` | Közös feladatformátum (`types.ts`: Task, AnswerField), feladat-előállítás és próbavizsga-sorok (`index.ts`), válaszellenőrzés mezőnként (`check.ts`: szám, szög, kompenzáló elem). |
+| `src/ui/` | A felület (sima TypeScript, keretrendszer nélkül): `app.ts` a keret és a négy mód, `viewer.ts` egy feladat nézete (rajz, lejátszó, megoldás, válaszmezők), `settings.ts` beállítások. |
+| `src/daily/` | Napi feladatsor: menetrend (`schedule.ts`, egyenáram és váltóáram), napi feladat (`problem.ts`), haladás a böngészőben (`progress.ts`). |
 | `src/tests/` | Vitest tesztek. |
 
 ## Szabályok, amiket a felhasználók kértek (ezek felülírnak minden mást)
@@ -69,32 +71,34 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   **azzal a módszerrel a legkönnyebb** megoldani (`src/methods/fit.ts`); a feladat címe alatt ki is
   írja, miért (pl. „Csomóponti potenciállal 2 egyenlet, hurokárammal 3”).
 
-### Kapcsolók (eszköztár)
-- **Csillag-delta:** csak bekapcsolva kerül csillag-delta a feladatba, és **ugyanazt a seedű
-  feladatot alakítja át** (a rajz szélére egy új ellenállás kerül, ettől híd lesz) — Eredő ellenállás,
-  Feszültség- és áramosztás, Teljes hálózatanalízis, Thevenin (Rth) témakörben; szuperpozíciónál
-  olyan feladatot hoz, amelynek egyik részáramkörében híd van. Kikapcsoláskor az előző feladat jön
-  vissza, újra bekapcsoláskor az előző csillag-deltás (nem új véletlen). A napi kihívást nem érinti.
+### Beállítások (egy panelen, nem az eszköztáron)
+- **Csillag-delta:** csak bekapcsolva kerül csillag-delta a feladatba, és ugyanazt a seedű feladatot
+  alakítja át (a rajz szélére egy új ellenállás kerül, ettől híd lesz) — Eredő ellenállás,
+  Feszültség- és áramosztás, Teljes hálózatanalízis, Thevenin (Rth) témakörben. A napi feladatokat
+  nem érinti.
 - **Áramkör újrarajzolása:** csak bekapcsolva; minden összevonásnál újrarajzolja az áramkört (az
-  összevont ellenállások helyén az eredő, pl. „Re1 = 6 Ω”), animációval: a kamera rááll, megjelenik
-  a jel (soros +, párhuzamos ×), soros összevonásnál a kieső elem elhalványul, párhuzamosnál
-  odacsúszik és az ág vezetéke elhalványul. Nincs záró rugózás.
+  összevont ellenállások helyén az eredő, pl. „Re1 = 6 Ω”), animációval: megjelenik a jel (soros +,
+  párhuzamos ×), soros összevonásnál a kieső elem elhalványul, párhuzamosnál odacsúszik és az ág
+  vezetéke elhalványul. A nézet közben nem mozdul el.
 
-### Napi kihívás, pontozás, ranglista
-- Minden nap 00:00-kor új kihívás; **ugyanazon a napon és fokozaton mindenkinek ugyanaz a feladat**
-  (seed: `D{nap}-{fokozat}-{sorszám}`, `src/daily/schedule.ts`). Fokozatok: Free elo, Közepes,
-  Tryhard, Kurva nehéz. 2026-11-02 és 11-08 között csak szuperpozíció, utána vegyesen. Első ZH: 2026-11-16.
-- Napi feladatnál: a feladat (és a rajz) csak a **Start** után látszik, az óra akkor indul; a módszer
-  kötött; nincs Gyakorló/Vizsga mód; az Ellenőrző nézet csak megoldás után érhető el (különben
-  kiírná a választ).
-- Pontozás szorzós (`src/daily/score.ts`, `achievements.ts`): feladatonként alappont × időbónusz ×
-  levonások × sorozat × ZH-láz (×2/nap) × szorzó; minden megoldott feladat a nehézségtől függő
-  szorzót ad, minden achievement szorzót ad. 10 mp alatti megoldás nem kap pontot (csalásszűrés).
-  A számok tömören: 100k, 2,5M, 1,2B.
-- Ranglista: a pontot mindenki gépe a naplóból újraszámolja (`sanitize` kiszűri a lehetetlen
-  rekordokat). Belépés felhasználónév + jelszó, e-mail nélkül (Supabase, saját függvények a
-  `schema.sql`-ben, bcrypt). A publishable kulcs nyilvános, a kódban maradhat; **secret/service_role
-  kulcs és adatbázis-jelszó soha ne kerüljön a kódba vagy a chatbe.**
+### Szinuszos feladatok (Villamosságtan 2)
+- Jelölés a könyv szerint: komplex csúcsérték Û, Î; impedancia Z̄ = R + jX; a szög fokban; a
+  generátor u(t) = Û·cos(ωt + φ). Teljesítmény: S̄ = ½·Û·Î*, P = Re, Q = Im (induktív: Q > 0).
+- A levezetés a vizsgamegoldások menetét követi: reaktanciák → eredő impedancia a túlsó végtől →
+  osztók a generátortól a keresett elemig → időfüggvény. Itt sincs mátrix, determináns.
+- Minden szinuszos és bekapcsolási eredményt a tesztek a független komplex MNA-val vetnek össze
+  (`src/tests/ac.test.ts`). Új feladattípusnál ilyen teszt is kell.
+- Bekapcsolásnál a hálózat a kapcsoló zárása előtt energiamentes; τ a Thevenin-ellenállásból.
+
+### Módok
+- **Gyakorlás:** azonnali ellenőrzés, tipp lépésenként, teljes megoldás; egyenáramnál a módszer
+  egy legördülőből választható (ha a mostani feladathoz nem jó, illő feladat jön).
+- **Időre:** egy feladat, visszaszámláló óra; a megoldás beadás vagy lejárat után látszik.
+- **Próbavizsga:** teljes feladatsor (egyenáram 5 / szinuszos 10 / vegyes 7 feladat) közös órával,
+  beadás után összesítés és feladatonkénti megoldás. Pontrendszer, ranglista nincs.
+- **Napi feladatok:** naponta új sor, mindenkinek ugyanaz (seed: `D{nap}-{terület}-{fokozat}-{sorszám}`),
+  csak a kész feladatok jelölése marad meg a böngészőben.
+- A rajz nézete nem mozog (nincs automatikus nagyítás): a kiemelés és a feliratok mutatják a lépést.
 
 ## Stílus
 - Apple-szerű, letisztult felület, világos és sötét mód; telefonon is használható (`@media (max-width: 640px)`).

@@ -1,389 +1,72 @@
-// Az alkalmazás felülete: eszköztár, feladatfej, áramkör-vászon, megoldás panel, lejátszósáv.
-// A megoldás lépésenként játszható le: az ábrán a lépéshez tartozó kiemelés, a panelen az
-// egyenlet tagonként épül fel.
+// Az alkalmazás kerete: fejléc (egyenáram / váltóáram, és a négy mód: gyakorlás, időre, próbavizsga,
+// napi feladatok), beállítások panel, és a módok saját nézetei. Egy feladat megjelenítése a
+// TaskViewer dolga; itt csak az dől el, hogy melyik feladat, milyen módban.
 
-import { generateProblem, TOPIC_NAMES, type Problem, type Topic } from '../generator/generate';
+import { generateProblem, type Topic } from '../generator/generate';
 import { randomSeed } from '../generator/rng';
-import { STAR_DELTA_TOPICS } from '../generator/inject';
-import { TOPOLOGY_NAMES } from '../generator/templates';
-import { LEVEL_NAMES, type Level } from '../generator/values';
-import { applicableMethods, solveWith, type Solution } from '../methods';
+import type { Level } from '../generator/values';
+import type { AcLevel, AcTopic } from '../ac/problems';
+import { applicableMethods, solveWith } from '../methods';
 import { methodFit } from '../methods/fit';
-import { computeLayout, type Layout } from '../render/layout';
-import { flowSegments, stateCurrents } from '../render/flow';
-import { focusBox, overlaySvg, type OverlayContext } from '../render/overlay';
-import { renderCircuitSvg } from '../render/svg';
-import type { Circuit } from '../solver/model';
-import { toNetlist } from '../solver/netlist';
-import { loadChart } from './loadChart';
-import { checkAnswer, formatNumber, formatQuantity } from '../units';
-import { checkCell, tableTargets, verify, type CellKey, type TableTarget } from '../methods/check';
-import { trickHint } from '../simplify/hint';
-import { recordAttempt } from './stats';
-import { openStats } from './statsSheet';
-import { TROPHY_ICON, openLeaderboard } from './leaderboardView';
-import { dailyChallenge, dayKey } from '../daily/schedule';
-import { loadProgress, openTask, recordEvent, type TaskEvent } from '../daily/progress';
-import { PAR_MINUTES } from '../daily/score';
-import { MIN_SOLVE_MS } from '../daily/share';
-import { dailyBanner } from './daily';
 import { dailyProblem } from '../daily/problem';
-import type { Account } from '../online/league';
-import { allElements } from '../solver/model';
-import { button, iconButton, segmented, select, slider, stepBar, toast, toggle, type SegmentOption } from './components';
+import { DAILY_LEVELS, dailyChallenge, dayKey, msUntilNext, type DailyLevel } from '../daily/schedule';
+import { isDone, loadProgress, markDone, streak } from '../daily/progress';
+import { AC_LEVELS, AC_TOPICS, DC_LEVELS, DC_TOPICS, dcTask, EXAMS, examTasks, makeTask, type ExamKind } from '../tasks';
+import type { Domain, Task } from '../tasks/types';
+import { button, iconButton, segmented, select, slider, toast, toggle } from './components';
 import { h, icon, ICONS } from './dom';
-import { FlowAnimator } from './flow';
-import { Player } from './player';
-import { loadSettings, methodList, saveSettings, type MethodId, type Settings, type StarDeltaMode, type ThemeChoice } from './settings';
-import { stepList, type StepList } from './steps';
+import { isLite, setLite } from './perf';
+import { loadSettings, saveSettings, type MethodId, type Mode, type Settings, type ThemeChoice } from './settings';
+import { fieldAnswerText, scoreTask, TaskViewer, type Score } from './viewer';
+import { formatNumber } from '../units';
 
-const THEME_NEXT: Record<ThemeChoice, ThemeChoice> = { system: 'light', light: 'dark', dark: 'system' };
-const THEME_LABEL: Record<ThemeChoice, string> = { system: 'Színmód: rendszer', light: 'Színmód: világos', dark: 'Színmód: sötét' };
+const MODE_NAMES: Record<Mode, string> = { gyakorlas: 'Gyakorlás', idore: 'Időre', vizsga: 'Próbavizsga', napi: 'Napi' };
 
-/** Kivel fut az app: belépett fiók, vendég (csak gyakorlás), vagy szerver nélkül (pontkódos ranglista). */
-export interface AppSession {
-  account: Account | null;
-  mode: 'online' | 'guest' | 'offline';
-  onLogin(): void;
-  onLogout(): void;
-}
-
-export function startApp(root: HTMLElement, session: AppSession = { account: null, mode: 'offline', onLogin: () => {}, onLogout: () => {} }): void {
+export function startApp(root: HTMLElement): void {
   const settings = loadSettings();
-  // Vendégként nincs napi kihívás (az a fiókhoz kötött).
-  if (session.mode === 'guest') settings.dailyActive = false;
-  let seed = randomSeed();
-  let problem: Problem | null = null;
-  let solution: Solution | null = null;
-  let layout: Layout | null = null;
-  let overlayCtx: OverlayContext | null = null;
-  let steps: StepList | null = null;
-  let reverse = false;
-
   const update = (patch: Partial<Settings>) => {
     Object.assign(settings, patch);
     saveSettings(settings);
   };
 
+  const viewer = new TaskViewer({
+    settings: () => settings,
+    onAllCorrect: () => onSolved(),
+    onMethodPick: (m) => pickMethod(m),
+    onNewTask: () => newPractice(),
+  });
+
   const applyTheme = () => {
     if (settings.theme === 'system') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', settings.theme);
-    themeBtn.setAttribute('aria-label', THEME_LABEL[settings.theme]);
-    themeBtn.title = THEME_LABEL[settings.theme];
   };
 
-  // ───────── Eszköztár ─────────
+  // ───────── Fejléc ─────────
 
-  /** Melyik témakörben van biztosan ehhez a módszerhez illő feladat. */
-  const METHOD_TOPIC: Record<MethodId, Topic> = {
-    redukcio: 'eredo',
-    kirchhoff: 'kirchhoff',
-    hurokaram: 'tobbforras',
-    szuperpozicio: 'tobbforras',
-    thevenin: 'thevenin',
-    'csillag-delta': 'csillag-delta',
-    csomoponti: 'tobbforras',
-  };
-
-  /** A választott módszer nem illik a feladathoz: új feladatot hozunk, amit ezzel a módszerrel lehet megoldani. */
-  /** Mely témakörök tartoznak egy módszerhez (ezekben maradhatunk módszerváltáskor). */
-  const METHOD_FAMILY: Record<MethodId, Topic[]> = {
-    redukcio: ['eredo', 'oszto', 'halozat', 'valodi-gen', 'ohm'],
-    kirchhoff: ['kirchhoff'],
-    hurokaram: ['tobbforras', 'zh'],
-    szuperpozicio: ['tobbforras', 'zh'],
-    thevenin: ['thevenin'],
-    'csillag-delta': ['csillag-delta', 'eredo', 'oszto', 'halozat'],
-    csomoponti: ['tobbforras', 'zh'],
-  };
-
-  /**
-   * A módszerhez illő feladat keresése (amit azzal a legkönnyebb megoldani). Előbb szigorúan
-   * (kevesebb egyenlet, mint más módszerrel), aztán engedékenyebben (legalább annyira könnyű).
-   */
-  const findFor = (m: MethodId, topics: Topic[]): { seed: string; topic: Topic } | null => {
-    const level = settings.level;
-    for (const relaxed of [false, true])
-      for (const topic of topics)
-        for (let i = 0; i < (relaxed ? 30 : 45); i++) {
-          const s = randomSeed();
-          try {
-            const p = generateProblem({ seed: s, topic, level: topic === 'zh' ? 'zh' : level === 'zh' ? 'nehez' : level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode });
-            if (methodFit(m, p, relaxed).ok) return { seed: s, topic };
-          } catch {
-            // Ez a seed nem adott érvényes feladatot: jöhet a következő.
-          }
-        }
-    return null;
-  };
-
-  /** Módszerfül: új feladat, amit ezzel a módszerrel a legkönnyebb megoldani. */
-  const switchToMethod = (m: MethodId): boolean => {
-    // A mostani témakörben csak akkor maradunk, ha az a módszerhez tartozik.
-    const family = METHOD_FAMILY[m].includes(settings.topic) ? [settings.topic] : [];
-    const found = findFor(m, [...new Set([...family, METHOD_TOPIC[m]])]);
-    if (!found) {
-      methodSeg.set(settings.method);
-      toast(settings.starDelta && m === 'szuperpozicio' ? 'Ezen a szinten nem találtam csillag-deltás szuperpozíciós feladatot (ZH-szinten túl nagyok a hálózatok egy átalakításhoz). Próbáld Közepes vagy Nehéz szinten!' : 'Nem találtam ehhez a módszerhez illő feladatot ezen a szinten.');
-      return false;
-    }
-    if (found.topic !== settings.topic) {
-      update({ topic: found.topic });
-      topicSel.setOptions(topicOptions(), found.topic);
-      syncLevel();
-    }
-    update({ method: m });
-    methodSeg.set(m);
-    seed = found.seed;
-    generate();
-    return true;
-  };
-
-  /** Vizsga mód (beadás után ellenőrzés): csak a napi kihíváson kívül. */
-  const isExam = () => settings.mode === 'vizsga' && !settings.dailyActive;
-  /** Napi kihívásban a feladat módszere kötött (pl. a szuperpozíciós héten mindig szuperpozíció). */
-  const lockedMethod = (): MethodId | null => {
-    if (!settings.dailyActive) return null;
-    const c = dailyChallenge(new Date(), settings.dailyLevel);
-    return c.tasks[Math.min(dailyIndex, c.tasks.length - 1)]?.method ?? null;
-  };
-
-  const methodOptions = (): SegmentOption<MethodId>[] => methodList(settings.starDelta).map((m) => ({ value: m.id, label: m.label, badge: m.badge }));
-  if (!methodOptions().some((o) => o.value === settings.method)) settings.method = 'redukcio';
-  const methodSeg = segmented<MethodId>('Módszer', methodOptions(), settings.method, (v) => {
-    const locked = lockedMethod();
-    if (locked && v !== locked) {
-      methodSeg.set(locked);
-      toast(`A napi kihívásban ez a feladat ${methodList(settings.starDelta).find((m) => m.id === locked)?.label ?? locked} módszerrel megy`);
-      return;
-    }
-    // Szabad gyakorlásnál minden módszerfül saját, hozzáillő feladatot hoz.
-    if (!settings.dailyActive) return switchToMethod(v);
-    update({ method: v });
-    solveCurrent();
-  });
-
-  const topicOptions = () => (Object.keys(TOPIC_NAMES) as Topic[]).filter((t) => t !== 'csillag-delta' || settings.starDelta).map((t) => ({ value: t, label: TOPIC_NAMES[t] }));
-  if (!settings.starDelta && settings.topic === 'csillag-delta') settings.topic = 'oszto';
-  const topicSel = select<Topic>(
-    'Témakör',
-    topicOptions(),
-    settings.topic,
-    (v) => {
-      if (settings.dailyActive) setDaily(false);
-      update({ topic: v });
-      syncLevel();
-      newProblem();
-    },
-  );
-  const levelSel = select<Level>(
-    'Nehézség',
-    (Object.keys(LEVEL_NAMES) as Level[]).map((l) => ({ value: l, label: LEVEL_NAMES[l] })),
-    settings.level,
-    (v) => {
-      if (settings.dailyActive) setDaily(false);
-      update({ level: v });
-      newProblem();
-    },
-  );
-  const syncLevel = () => {
-    const forced = settings.topic === 'zh';
-    levelSel.setDisabled(forced);
-    levelSel.set(forced ? 'zh' : settings.level);
-  };
-
-  const sdMode = segmented<StarDeltaMode>(
-    'Csillag-delta irány',
+  const domainSeg = segmented<Domain>(
+    'Tananyag',
     [
-      { value: 'delta-csillag', label: 'Δ → Y' },
-      { value: 'csillag-delta', label: 'Y → Δ' },
-      { value: 'veletlen', label: 'Véletlen' },
+      { value: 'dc', label: 'Egyenáram' },
+      { value: 'ac', label: 'Váltóáram' },
     ],
-    settings.starDeltaMode,
+    settings.domain,
     (v) => {
-      update({ starDeltaMode: v });
-      // Ugyanaz a feladat, csak az átalakítás iránya változik (a napi kihívást nem érinti).
-      if (!settings.dailyActive) generate();
-    },
-    'sm',
-  );
-  sdMode.el.hidden = !settings.starDelta;
-  /** A kapcsoló két állásának utolsó feladata: visszakapcsoláskor ez jön vissza (nem új, véletlen feladat). */
-  const sdMemory: Partial<Record<'on' | 'off', { seed: string; topic: Topic; method: MethodId; level: Level }>> = {};
-  const sdToggle = toggle('Csillag-delta', settings.starDelta, (v) => {
-    const leaving = { seed, topic: settings.topic, method: settings.method, level: settings.level };
-    update({ starDelta: v });
-    sdMode.el.hidden = !v;
-    if (!v && settings.method === 'csillag-delta') update({ method: 'redukcio' });
-    if (!v && settings.topic === 'csillag-delta') update({ topic: 'eredo' });
-    topicSel.setOptions(topicOptions(), settings.topic);
-    methodSeg.setOptions(methodOptions(), settings.method);
-    syncLevel();
-    // A napi kihívást a kapcsoló nem érinti (annak a feladatai mindenkinél ugyanazok).
-    if (settings.dailyActive) return toast('A napi kihívás feladatai ettől nem változnak; a csillag-delta a szabad gyakorlásra vonatkozik.');
-    // Megjegyezzük, honnan jöttünk; ha ebben az állásban volt már feladat (ugyanazon a szinten), az jön vissza.
-    sdMemory[v ? 'off' : 'on'] = leaving;
-    const back = sdMemory[v ? 'on' : 'off'];
-    if (back && back.level === settings.level) {
-      update({ topic: back.topic, method: back.method });
-      topicSel.setOptions(topicOptions(), back.topic);
-      methodSeg.setOptions(methodOptions(), back.method);
-      syncLevel();
-      seed = back.seed;
-      generate();
-      toast(v ? 'Visszakaptad az előző csillag-deltás feladatot.' : 'Visszakaptad az előző feladatot (csillag-delta nélkül).');
-      return;
-    }
-    // Szuperpozíciónál a részáramkörök összevonásában kell az átalakítás: ehhez illő (új) feladat jön.
-    if (settings.method === 'szuperpozicio' && (settings.topic === 'tobbforras' || settings.topic === 'zh')) {
-      if (switchToMethod('szuperpozicio'))
-        toast(v ? 'Szuperpozíciós feladat, amelynek egyik részáramkörében híd van: ott csillag-delta átalakítás kell, utána eredő és osztók.' : 'Szuperpozíciós feladat csillag-delta nélkül: minden részáramkör eredővel és osztókkal megy.');
-      return;
-    }
-    // Ugyanaz a feladat (ugyanaz a seed): bekapcsolva egy új ellenállás kerül bele, ami miatt átalakítás kell.
-    if (v && settings.topic !== 'csillag-delta' && !STAR_DELTA_TOPICS.has(settings.topic)) {
-      toast('Ennél a feladatnál nincs mit átalakítani. Csillag-delta az Eredő ellenállás, a Feszültség- és áramosztás, a Teljes hálózatanalízis és a Thevenin feladataiba, valamint a Szuperpozíció részáramköreibe kerül.');
-    }
-    // Theveninnél az átalakítás az Rth része, ott marad a Thevenin-módszer.
-    if (v && STAR_DELTA_TOPICS.has(settings.topic)) update({ method: settings.topic === 'thevenin' ? 'thevenin' : 'csillag-delta' });
-    generate();
-    if (v && STAR_DELTA_TOPICS.has(settings.topic) && problem) {
-      try {
-        const base = generateProblem({ seed, topic: settings.topic, level: settings.topic === 'zh' ? 'zh' : settings.level });
-        if (base.attempts !== problem.attempts) toast('Ebbe a feladatba nem fért el a csillag-delta (túl kevés benne a csomópont), ezért egy hasonló, kicsit nagyobb feladatot kaptál.');
-        else toast(settings.topic === 'thevenin' ? 'Bekerült egy új ellenállás: a belső ellenállás (Rth) csak csillag-delta átalakítással számolható.' : 'Bekerült egy új ellenállás: ettől a hálózat hidas lett, és csak csillag-delta átalakítással vonható össze.');
-      } catch {
-        // Az összevetés csak tájékoztató.
-      }
-    }
-  });
-
-  const redrawToggle = toggle('Áramkör újrarajzolása', settings.redraw, (v) => {
-    update({ redraw: v });
-    toast(v ? 'Bekapcsolva: minden összevonás után újrarajzolódik az áramkör, az összevont ellenállások helyén az eredőjük.' : 'Kikapcsolva: a rajz végig az eredeti marad.');
-    loadPlayer(true);
-  });
-  redrawToggle.el.title = 'Minden eredő ellenállásnál újrarajzolja az áramkört: az összevont ellenállások helyére az eredőjük kerül.';
-
-  const statsBtn = iconButton('Statisztika', ICONS.stats, () => openStats());
-  const leaderBtn = iconButton('Ranglista', TROPHY_ICON, () => openLeaderboard());
-  leaderBtn.classList.add('lb-btn');
-
-  // ───────── Napi kihívás ─────────
-
-  let dailyIndex = 0;
-  /** Melyik napi feladat van betöltve (nap|fokozat|feladat), vagy null szabad gyakorlásnál. */
-  let dailyLoaded: string | null = null;
-  let dailyDay = dayKey(new Date());
-  const banner = dailyBanner(
-    settings.dailyLevel,
-    (l) => {
-      update({ dailyLevel: l });
-      dailyIndex = 0;
-      generate();
-    },
-    (i) => {
-      dailyIndex = i;
-      generate();
+      update({ domain: v });
+      route();
     },
   );
-  banner.el.hidden = !settings.dailyActive;
-  const setDaily = (on: boolean) => {
-    update({ dailyActive: on });
-    banner.el.hidden = !on;
-    dailyBtn.setAttribute('aria-pressed', String(on));
-    dailyIndex = 0;
-    if (on) generate();
-    else newProblem();
-  };
-  const dailyBtn = iconButton('Napi kihívás', ICONS.calendar, () => (session.mode === 'guest' ? session.onLogin() : setDaily(!settings.dailyActive)));
-  const accountEl = session.account
-    ? h(
-        'div',
-        { class: 'account' },
-        h('span', { class: 'account-name', attrs: { title: 'Belépve' }, text: session.account.username }),
-        button('Kilépés', session.onLogout, 'quiet'),
-      )
-    : session.mode === 'guest'
-      ? button('Belépés', session.onLogin, 'secondary')
-      : null;
-  dailyBtn.setAttribute('aria-pressed', String(settings.dailyActive));
-  // Éjfélkor új napi kihívás.
-  window.setInterval(() => {
-    const now = dayKey(new Date());
-    if (now === dailyDay) return;
-    dailyDay = now;
-    if (settings.dailyActive) {
-      dailyIndex = 0;
-      generate();
-      toast('Itt az új napi kihívás!');
-    }
-  }, 1000);
-  /** A napi feladat állapota: kész, ha minden kérdése helyes. */
-  /** A kiválasztott napi feladat (napi módban). */
-  const dailyTask = () => {
-    if (!settings.dailyActive) return null;
-    const c = dailyChallenge(new Date(), settings.dailyLevel);
-    return { c, t: c.tasks[Math.min(dailyIndex, c.tasks.length - 1)]! };
-  };
-  /** Az aktuális napi feladat (ha a betöltött feladat az). */
-  const currentDaily = () => {
-    if (!settings.dailyActive || !problem) return null;
-    const c = dailyChallenge(new Date(), settings.dailyLevel);
-    const t = c.tasks[Math.min(dailyIndex, c.tasks.length - 1)]!;
-    return dailyLoaded === `${c.day}|${settings.dailyLevel}|${t.id}` ? { c, t } : null;
-  };
-  /** Versenyesemény a napi feladaton (rossz válasz, tipp, trükk-tipp, teljes megoldás). */
-  const dailyEvent = (ev: TaskEvent) => {
-    const cur = currentDaily();
-    if (!cur) return;
-    recordEvent(cur.c.day, settings.dailyLevel, cur.t.id, ev);
-    banner.render(cur.c, dailyIndex);
-  };
-  /** Ellenőrzés után: kész, ha minden kérdése helyes; a rossz válasz levonással jár. */
-  /** Napi feladat, ami még nincs megoldva: ilyenkor nincs Ellenőrző nézet (az kiírná a választ). */
-  const dailyUnsolved = () => {
-    const cur = currentDaily();
-    return !!cur && !loadProgress()[cur.c.day]?.[settings.dailyLevel]?.[cur.t.id]?.solvedAt;
-  };
-  const dailyUpdate = (wrongNow: boolean) => {
-    const cur = currentDaily();
-    if (!cur || !problem) return;
-    const ok = (id: string, kind: string) => (kind === 'table' ? summaries.get(id)?.cls.includes('is-correct') : results.get(id)?.status === 'correct');
-    const all = problem.questions.every((q) => ok(q.id, q.kind));
-    if (all) {
-      const before = banner.total();
-      const first = !loadProgress()[cur.c.day]?.[settings.dailyLevel]?.[cur.t.id]?.solvedAt;
-      recordEvent(cur.c.day, settings.dailyLevel, cur.t.id, 'solved');
-      banner.render(cur.c, dailyIndex);
-      // Megoldás után már elérhető az Ellenőrző nézet.
-      if (first) renderPanel();
-      // Első megoldáskor a pontozás-animáció, utána a szokásos jelzés.
-      const rec = loadProgress()[cur.c.day]?.[settings.dailyLevel]?.[cur.t.id];
-      // A Start utáni 10 mp-en belüli megoldás nem kap pontot (ennyi idő alatt nem lehet kiszámolni).
-      const tooFast = !!rec?.solvedAt && rec.solvedAt - rec.opened < MIN_SOLVE_MS;
-      const fx = first && !tooFast ? banner.celebrateSolve(cur.c.day, settings.dailyLevel, cur.t.id, cur.t.title, before) : Promise.resolve();
-      void fx.then(() =>
-        toast(
-          tooFast
-            ? `Helyes, de ${MIN_SOLVE_MS / 1000} mp-en belül a Start után: ez nem kap pontot.`
-            : dailyIndex < cur.c.tasks.length - 1
-              ? 'Megvan! Jöhet a következő feladat (N).'
-              : 'Kész a mai kihívás!',
-        ),
-      );
-      return;
-    }
-    if (wrongNow) recordEvent(cur.c.day, settings.dailyLevel, cur.t.id, 'wrong');
-    banner.render(cur.c, dailyIndex);
-  };
-  const themeBtn = iconButton('Színmód', ICONS.theme, () => {
-    update({ theme: THEME_NEXT[settings.theme] });
-    applyTheme();
-    toast(THEME_LABEL[settings.theme]);
-  });
-
-  const toolbar = h(
+  domainSeg.el.title = 'Egyenáram: Villamosságtan 1 · Váltóáram: Villamosságtan 2 (szinuszos hálózatok, rezgőkörök, bekapcsolás)';
+  const modeSeg = segmented<Mode>(
+    'Mód',
+    (Object.keys(MODE_NAMES) as Mode[]).map((m) => ({ value: m, label: MODE_NAMES[m] })),
+    settings.mode,
+    (v) => {
+      update({ mode: v });
+      route();
+    },
+  );
+  const settingsBtn = h('button', { class: 'btn btn-quiet settings-btn', attrs: { type: 'button' }, on: { click: () => openSettings() } }, icon(ICONS.settings, 16), h('span', { text: 'Beállítások' }));
+  const header = h(
     'header',
     { class: 'toolbar' },
     h(
@@ -392,839 +75,517 @@ export function startApp(root: HTMLElement, session: AppSession = { account: nul
       h('span', { class: 'brand-mark', html: '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 9h3l2-5 4 10 2-5h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' }),
       'Villamosságtan',
     ),
-    methodSeg.el,
-    h('div', { class: 'toolbar-group' }, dailyBtn, topicSel.el, levelSel.el, sdToggle.el, sdMode.el, redrawToggle.el, leaderBtn, statsBtn, themeBtn, accountEl),
+    domainSeg.el,
+    modeSeg.el,
+    h('div', { class: 'toolbar-group' }, settingsBtn),
   );
 
-  // ───────── Feladatfej ─────────
+  const main = h('main', { class: 'main' });
+  root.replaceChildren(header, main);
 
-  const seedInput = h('input', {
-    attrs: { 'aria-label': 'Seed', spellcheck: 'false', autocomplete: 'off' },
-    on: {
-      keydown: (e) => {
-        if (e.key === 'Enter' && seedInput.value.trim()) {
-          seed = seedInput.value.trim().toUpperCase();
-          generate();
-        }
+  // ───────── Közös: témakör és nehézség ─────────
+
+  const topicPicker = (onChange: () => void): HTMLElement => {
+    const dc = settings.domain === 'dc';
+    const topics = dc ? DC_TOPICS : AC_TOPICS;
+    const topicSel = select<string>(
+      'Témakör',
+      topics.map((t) => ({ value: t.id, label: t.name })),
+      dc ? settings.dcTopic : settings.acTopic,
+      (v) => {
+        if (dc) update({ dcTopic: v as Topic });
+        else update({ acTopic: v as AcTopic });
+        syncLevel();
+        hint.textContent = topics.find((t) => t.id === v)?.hint ?? '';
+        onChange();
       },
-    },
-  });
-  const seedField = h(
-    'span',
-    { class: 'seed-field' },
-    'seed ',
-    seedInput,
-    iconButton('Seed másolása', ICONS.copy, () => {
-      void navigator.clipboard?.writeText(seed).then(
-        () => toast('Seed másolva'),
-        () => toast('A másolás nem sikerült'),
-      );
-    }),
-  );
-  const metaText = h('span');
-  const title = h('h1', { class: 'problem-title' });
-  // Új feladat (szabad gyakorlásnál; a napi kihívás feladatai rögzítettek).
-  const newBtn = button('Új feladat', () => newProblem(), 'secondary');
-  newBtn.classList.add('new-problem');
-  newBtn.title = 'Új feladat ugyanebből a témakörből (N)';
-  const fitText = h('p', { class: 'method-fit' });
-  const head = h('div', { class: 'problem-head enter' }, h('div', { class: 'problem-meta' }, metaText, seedField, newBtn), title, fitText);
-
-  // ───────── Vászon ─────────
-
-  const canvas = h('div', { class: 'canvas', attrs: { role: 'img', 'aria-label': 'Áramkör' } });
-  const exportBtn = iconButton('Ábra mentése SVG-ként', ICONS.download, () => {
-    // Tiszta, teljes ábra (animáció és nagyítás nélkül).
-    if (!shownCircuit) return;
-    const svg = renderCircuitSvg(shownCircuit, { title: title.textContent ?? 'Áramkör' });
-    const a = h('a', { attrs: { href: URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })), download: `aramkor-${seed}.svg` } });
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
-  const legend = h(
-    'div',
-    { class: 'legend' },
-    ...[
-      ['var(--accent)', 'Áram, kérdéses elem'],
-      ['var(--loop)', 'Hurok'],
-      ['var(--node)', 'Csomópont'],
-      ['var(--result)', 'Eredmény'],
-    ].map(([c, t]) => h('span', {}, h('i', { attrs: { style: `--c:${c}` } }), t!)),
-  );
-  const canvasCard = h('section', { class: 'card canvas-card enter enter-2', attrs: { 'aria-label': 'Áramkör' } }, h('div', { class: 'card-bar' }, exportBtn), canvas, legend);
-
-  /** Az aktuális lépés kiemelése az ábrán (elemek osztályai és a két kiemelési réteg). */
-  /** A vásznon látható áramkör: a feladaté, vagy a lépés saját áramköre (pl. helyettesítő kép). */
-  let shownCircuit: Circuit | null = null;
-  const flow = new FlowAnimator();
-  const showCircuit = (c: Circuit, merged = false) => {
-    if (c === shownCircuit) return;
-    shownCircuit = c;
-    // Összeolvadás után a kamera onnan folytatja, ahol a régi rajzon állt (nem ugrik vissza).
-    const prevView = merged ? canvas.querySelector('svg')?.getAttribute('viewBox') : null;
-    layout = computeLayout(c);
-    overlayCtx = { circuit: c, layout, map: toNetlist(c) };
-    canvas.innerHTML = renderCircuitSvg(c, { title: title.textContent ?? 'Áramkör' }, layout);
-    if (prevView) canvas.querySelector('svg')!.setAttribute('viewBox', prevView);
-    flow.attach(canvas.querySelector('svg')!);
-    canvas.classList.remove('swap');
-    // Összeolvadás után nincs áttűnés: a rajz a helyén marad.
-    if (merged) return;
-    void canvas.offsetWidth;
-    canvas.classList.add('swap');
-  };
-
-  /** Folyamatban lévő összeolvadás-animáció (gyors léptetésnél megszakítjuk). */
-  let pendingMerge = 0;
-
-  /**
-   * Összeolvadás: a régi rajzon az eltűnő ellenállások odacsúsznak a megmaradóhoz, összezsugorodnak
-   * és elhalványulnak; utána jön az új rajz. true, ha az animáció elindult (a lépés később rajzolódik).
-   */
-  const mergeInto = (next: Circuit, keep: string | undefined, kind: 'series' | 'parallel', then: () => void): boolean => {
-    const svg = canvas.querySelector('svg');
-    if (!svg || !keep || !layout || !shownCircuit || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
-    const keepG = svg.querySelector<SVGGElement>(`.el[data-id="${keep}"]`);
-    const stay = new Set(allElements(next).map((e) => e.id));
-    const gone = [...svg.querySelectorAll<SVGGElement>('.el')].filter((g) => !stay.has(g.dataset.id!));
-    if (!keepG || gone.length === 0) return false;
-    const center = (b: DOMRect) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
-    const kb = keepG.getBBox();
-    const kc = center(kb);
-    const boxes = [kb, ...gone.map((g) => g.getBBox())];
-
-    // 1. A kamera rááll az összeolvadó ellenállásokra.
-    moveCamera(svg, {
-      x1: Math.min(...boxes.map((b) => b.x)),
-      y1: Math.min(...boxes.map((b) => b.y)),
-      x2: Math.max(...boxes.map((b) => b.x + b.width)),
-      y2: Math.max(...boxes.map((b) => b.y + b.height)),
-    });
-    keepG.classList.add('merge-target');
-
-    // Az eltűnő ágak vezetéke külön rétegre kerül, hogy elhalványulhasson.
-    const nextBranches = new Set(next.branches.map((b) => b.id));
-    const removed = new Set(shownCircuit.branches.filter((b) => !nextBranches.has(b.id)).map((b) => b.id));
-    const segD = (keepIt: boolean) =>
-      layout!.wires
-        .filter((w) => removed.has(w.branchId) !== keepIt && (w.a.x !== w.b.x || w.a.y !== w.b.y))
-        .map((w) => `M${w.a.x} ${w.a.y}L${w.b.x} ${w.b.y}`)
-        .join('');
-    const wirePath = svg.querySelector('.wires .wire');
-    let fadingWire: SVGPathElement | null = null;
-    if (wirePath && removed.size) {
-      wirePath.setAttribute('d', segD(true));
-      fadingWire = wirePath.cloneNode() as SVGPathElement;
-      fadingWire.setAttribute('d', segD(false));
-      fadingWire.classList.add('merge-fade');
-      wirePath.after(fadingWire);
-    }
-
-    // A művelet jele a két ellenállás között: soros +, párhuzamos × (replusz).
-    const gc = gone.map((g) => center(g.getBBox()));
-    const mid = { x: (kc.x + gc.reduce((a, p) => a + p.x, 0) / gc.length) / 2, y: (kc.y + gc.reduce((a, p) => a + p.y, 0) / gc.length) / 2 };
-    const op = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    op.setAttribute('class', 'merge-op');
-    op.setAttribute('x', String(mid.x));
-    op.setAttribute('y', String(mid.y));
-    op.setAttribute('text-anchor', 'middle');
-    op.setAttribute('dominant-baseline', 'central');
-    op.textContent = kind === 'parallel' ? '×' : '+';
-    svg.querySelector('.ov-over')?.append(op);
-
-    // 2. Kis szünet után (a kamera odaért, a jel megjelent) az összeolvadás.
-    pendingMerge = window.setTimeout(() => {
-      op.classList.add('is-on');
-      pendingMerge = window.setTimeout(() => {
-        for (const g of gone) {
-          const branch = shownCircuit!.branches.find((b) => b.elements.some((e) => e.id === g.dataset.id));
-          g.classList.add('merging');
-          // Párhuzamos ág eltűnik: az ellenállás odacsúszik; soros (a helyén vezeték marad): csak elhalványul.
-          if (branch && removed.has(branch.id)) {
-            const c = center(g.getBBox());
-            g.style.transform = `translate(${kc.x - c.x}px, ${kc.y - c.y}px) scale(0.4)`;
-          }
-          g.style.opacity = '0';
-        }
-        if (fadingWire) fadingWire.style.opacity = '0';
-        op.classList.add('is-out');
-        pendingMerge = window.setTimeout(() => {
-          pendingMerge = 0;
-          then();
-        }, 700);
-      }, 450);
-    }, 550);
-    return true;
-  };
-
-  const applyHighlight = (index: number) => {
-    window.clearTimeout(pendingMerge);
-    pendingMerge = 0;
-    const step = solution?.steps[index];
-    // Áramkör újrarajzolása (csak ha be van kapcsolva): az összevonás utáni, egyszerűsített rajz.
-    const rd = settings.redraw && !step?.circuit ? step?.redraw : undefined;
-    const next = problem ? (step?.circuit ?? rd?.circuit ?? problem.circuit) : null;
-    // Előre lépve az összevont ellenállások "összeolvadnak", mielőtt az új rajz megjelenik.
-    if (rd && next && next !== shownCircuit && index > lastIndex) {
-      const keep = rd.highlight.elements?.[0];
-      lastIndex = index;
-      if (mergeInto(next, keep, rd.kind ?? 'series', () => drawStep(index, keep))) return;
-    }
-    lastIndex = index;
-    drawStep(index);
-  };
-  let lastIndex = -1;
-
-  const drawStep = (index: number, popId?: string) => {
-    const step = solution?.steps[index];
-    const rd = settings.redraw && !step?.circuit ? step?.redraw : undefined;
-    if (problem) showCircuit(step?.circuit ?? rd?.circuit ?? problem.circuit, !!popId);
-    const svg = canvas.querySelector('svg');
-    if (!svg || !overlayCtx) return;
-    const hl = rd?.highlight ?? step?.highlight ?? {};
-    const targets = new Set(step?.circuit ? [] : (problem?.questions.map((q) => q.target).filter(Boolean) as string[]));
-    const strong = new Set(hl.elements ?? []);
-    const faint = new Set([...(hl.dim ?? []), ...(hl.killed ?? []).map((k) => k.element)]);
-    svg.querySelectorAll<SVGGElement>('.el').forEach((g) => {
-      const id = g.dataset.id!;
-      // A kérdéses elem végig megkülönböztetett marad; a lépés kiemelése erre rárakódik.
-      g.classList.toggle('is-target', targets.has(id));
-      g.classList.toggle('is-hl', strong.has(id) && !faint.has(id));
-      g.classList.toggle('is-faint', faint.has(id));
-    });
-    const ov = overlaySvg(overlayCtx, hl);
-    const under = svg.querySelector('.ov-under')!;
-    const over = svg.querySelector('.ov-over')!;
-    under.innerHTML = ov.under;
-    over.innerHTML = ov.over;
-    for (const layer of [under, over]) {
-      layer.classList.remove('ov-in');
-      void (layer as SVGGElement).getBBox?.();
-      layer.classList.add('ov-in');
-    }
-    // Áramlás az adott állapot szerint: kiiktatott forrásnál, lekötött ágnál másként (vagy sehogy) folyik.
-    if (shownCircuit && layout) flow.set(flowSegments(shownCircuit, layout, stateCurrents(shownCircuit, hl)));
-    // Kamera: finoman ráközelít a lépés fókuszára.
-    moveCamera(svg, focusBox(overlayCtx, hl));
-  };
-
-  /** A nézet (viewBox) rugalmas animálása a fókusz köré; ha nincs fókusz, a teljes ábra. */
-  let camRaf = 0;
-  const moveCamera = (svg: SVGSVGElement, focus: ReturnType<typeof focusBox>) => {
-    if (!layout) return;
-    const full = layout.viewBox;
-    let target = { ...full };
-    if (focus) {
-      const pad = 70;
-      let w = focus.x2 - focus.x1 + 2 * pad;
-      let hgt = focus.y2 - focus.y1 + 2 * pad;
-      const ratio = full.width / full.height;
-      if (w / hgt < ratio) w = hgt * ratio;
-      else hgt = w / ratio;
-      // Legfeljebb kb. 1,6-szoros nagyítás; ha a fókusz majdnem az egész ábra, nincs nagyítás.
-      if (w < full.width * 0.62) {
-        w = full.width * 0.62;
-        hgt = w / ratio;
-      }
-      if (w < full.width * 0.88) {
-        const cx = (focus.x1 + focus.x2) / 2;
-        const cy = (focus.y1 + focus.y2) / 2;
-        const x = Math.min(Math.max(cx - w / 2, full.x), full.x + full.width - w);
-        const y = Math.min(Math.max(cy - hgt / 2, full.y), full.y + full.height - hgt);
-        target = { x, y, width: w, height: hgt };
-      }
-    }
-    const cur = svg.viewBox.baseVal;
-    const from = { x: cur.x, y: cur.y, width: cur.width, height: cur.height };
-    cancelAnimationFrame(camRaf);
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const dur = reduced ? 0 : 750;
-    const t0 = performance.now();
-    const ease = (t: number) => 1 - Math.pow(1 - t, 4);
-    const tick = () => {
-      const t = dur ? Math.min(1, (performance.now() - t0) / dur) : 1;
-      const k = ease(t);
-      const v = (a: number, b: number) => (a + (b - a) * k).toFixed(2);
-      svg.setAttribute('viewBox', `${v(from.x, target.x)} ${v(from.y, target.y)} ${v(from.width, target.width)} ${v(from.height, target.height)}`);
-      if (t < 1) camRaf = requestAnimationFrame(tick);
-    };
-    tick();
-  };
-
-  // ───────── Megoldás panel ─────────
-
-  const panel = h('aside', { class: 'card panel enter enter-3', attrs: { 'aria-label': 'Megoldás' } });
-  const panelCount = h('span', { class: 'panel-count' });
-
-  // ───────── Gyakorló / vizsga mód, tipp, válaszok ─────────
-
-  /** Hány lépés látszik a megoldásból (gyakorlóban a tipp egyenként nyitja). */
-  let revealed = 0;
-  /** A teljes megoldást kérték (módszerváltás után is maradjon látható). */
-  let showAll = false;
-  /** Vizsga módban beadva-e. */
-  let submitted = false;
-  let verifyOpen = false;
-  let trickText = '';
-  let examStart = performance.now();
-  /** Beírt értékek, ítéletek, cellák állapota: túlélik a panel újrarajzolását. */
-  const typed = new Map<string, string>();
-  const results = new Map<string, ReturnType<typeof checkAnswer>>();
-  const cellState = new Map<string, 'is-ok' | 'is-bad'>();
-  const summaries = new Map<string, { cls: string; text: string }>();
-  /** Kérdésenként csak az első ellenőrzés számít a statisztikába. */
-  const recorded = new Set<string>();
-  const timerEl = h('span', { class: 'timer num', attrs: { 'aria-live': 'off' } });
-  window.setInterval(() => {
-    if (!isExam() || submitted || !settings.examTimer) return;
-    const s = Math.floor((performance.now() - examStart) / 1000);
-    timerEl.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-  }, 500);
-
-  const record = (correct: boolean, key: string) => {
-    if (!problem || recorded.has(key)) return;
-    recorded.add(key);
-    recordAttempt({ t: Date.now(), topic: problem.topic, level: problem.level, topology: problem.topology, method: settings.method, mode: settings.mode, correct });
-  };
-
-  const showVerdict = (verdict: HTMLElement, r: ReturnType<typeof checkAnswer>) => {
-    verdict.className = 'verdict';
-    verdict.replaceChildren();
-    void verdict.offsetWidth;
-    if (r.status === 'correct') {
-      verdict.classList.add('is-correct');
-      verdict.append(icon(ICONS.check, 16), 'Helyes');
-    } else if (r.status === 'wrong-sign') {
-      verdict.classList.add('is-wrong');
-      verdict.append('Az előjel nem jó: figyeld a referenciairányt.');
-    } else if (r.status === 'wrong') {
-      verdict.classList.add('is-wrong');
-      verdict.append('Nem ez az eredmény. Próbáld újra!');
-    } else {
-      verdict.classList.add('is-wrong');
-      verdict.append(r.error);
-    }
-  };
-
-  /** Beadáskor (vizsga) lefutó ellenőrzések. */
-  let submitters: (() => void)[] = [];
-
-  const answersSection = () => {
-    if (!problem) return h('div');
-    submitters = [];
-    const exam = isExam();
-    const parts = problem.questions.map((q, i) => {
-      if (q.kind === 'table') return tableSection(q.id);
-      const verdict = h('div', { class: 'verdict', attrs: { 'aria-live': 'polite' } });
-      const input = h('input', {
-        class: 'answer-input',
-        attrs: { placeholder: q.unit ? `Válasz, pl. ${{ V: '4,5 V', A: '350 mA', Ω: '4,7 kΩ', W: '1,2 W' }[q.unit]}` : '', 'aria-label': `${i + 1}. kérdés válasza`, inputmode: 'decimal', autocomplete: 'off' },
-        on: { keydown: (e) => e.key === 'Enter' && !exam && check(), input: () => typed.set(q.id, input.value) },
-      });
-      // A beírt érték és az ítélet túléli a panel újrarajzolását (pl. beadás, tipp).
-      input.value = typed.get(q.id) ?? '';
-      const check = () => {
-        if (!q.unit) return;
-        const r = checkAnswer(input.value, q.answer, q.unit, { magnitudeOnly: q.magnitudeOnly });
-        if (r.status !== 'invalid') record(r.status === 'correct', q.id);
-        results.set(q.id, r);
-        showVerdict(verdict, r);
-        dailyUpdate(r.status === 'wrong' || r.status === 'wrong-sign');
-      };
-      const prev = results.get(q.id);
-      if (prev && !(exam && !submitted)) showVerdict(verdict, prev);
-      if (exam) submitters.push(check);
-      const label = problem!.questions.length > 1 ? `${String.fromCharCode(97 + i)}) ${q.text}` : 'Saját válasz';
-      return h(
-        'div',
-        { class: 'question' },
-        h('p', { class: problem!.questions.length > 1 ? 'question-text' : 'question-label', text: label }),
-        h('div', { class: 'answer-row' }, input, exam ? null : button('Ellenőrzés', check, 'primary')),
-        verdict,
-      );
-    });
-    const submit = exam && !submitted ? button('Beadás', () => submitExam(), 'primary') : null;
-    return h('section', { class: 'answers', attrs: { 'aria-label': 'Saját válasz' } }, ...parts, ...(submit ? [h('div', { class: 'submit-row' }, submit)] : []));
-  };
-
-  /** Táblázatkitöltős feladat: minden elem U, I, P értéke, cellánként ellenőrizve. */
-  const tableSection = (qid: string) => {
-    const targets = tableTargets(problem!);
-    const cells: { input: HTMLInputElement; target: TableTarget; key: CellKey }[] = [];
-    const row = (t: TableTarget) =>
-      h(
-        'tr',
-        {},
-        h('td', { text: t.label }),
-        ...(['U', 'I', 'P'] as CellKey[]).map((key) => {
-          const id = `${qid}|${t.element}|${key}`;
-          const input = h('input', {
-            class: 'cell-input num',
-            attrs: { 'aria-label': `${t.element} ${key}`, inputmode: 'decimal', autocomplete: 'off', placeholder: key === 'U' ? 'V' : key === 'I' ? 'A' : 'W' },
-            on: { input: () => typed.set(id, input.value) },
-          });
-          input.value = typed.get(id) ?? '';
-          const st = cellState.get(id);
-          if (st && !(isExam() && !submitted)) input.classList.add(st);
-          cells.push({ input, target: t, key });
-          return h('td', {}, input);
-        }),
-      );
-    const summary = h('div', { class: 'verdict', attrs: { 'aria-live': 'polite' } });
-    const check = () => {
-      let ok = 0;
-      let filled = 0;
-      for (const c of cells) {
-        c.input.classList.remove('is-ok', 'is-bad');
-        if (!c.input.value.trim()) continue;
-        filled++;
-        const r = checkCell(c.input.value, c.target, c.key);
-        const cls = r.status === 'correct' ? 'is-ok' : 'is-bad';
-        c.input.classList.add(cls);
-        cellState.set(`${qid}|${c.target.element}|${c.key}`, cls);
-        if (r.status === 'correct') ok++;
-      }
-      const text = ok === cells.length ? 'Minden cella helyes' : `${ok} / ${cells.length} cella helyes${filled < cells.length ? ` (${cells.length - filled} üres)` : ''}`;
-      const cls = `verdict ${ok === cells.length ? 'is-correct' : 'is-wrong'}`;
-      summaries.set(qid, { cls, text });
-      summary.className = cls;
-      summary.textContent = text;
-      dailyUpdate(filled === cells.length && ok !== cells.length);
-      if (filled === cells.length) record(ok === cells.length, qid);
-    };
-    const prevSummary = summaries.get(qid);
-    if (prevSummary && !(isExam() && !submitted)) {
-      summary.className = prevSummary.cls;
-      summary.textContent = prevSummary.text;
-    }
-    if (isExam()) submitters.push(check);
-    return h(
-      'div',
-      { class: 'question' },
-      h('p', { class: 'question-text', text: 'Töltsd ki a táblázatot: minden elem feszültsége, árama és teljesítménye a referenciairány szerint, előjelesen (a forrásé negatív, ha teljesítményt ad le).' }),
-      h(
-        'div',
-        { class: 'table-wrap' },
-        h('table', { class: 'value-table fill-table' }, h('thead', {}, h('tr', {}, h('th', { text: 'Elem' }), h('th', { text: 'U' }), h('th', { text: 'I' }), h('th', { text: 'P' }))), h('tbody', {}, ...targets.map(row))),
-      ),
-      isExam() ? null : h('div', { class: 'answer-row' }, button('Táblázat ellenőrzése', check, 'primary')),
-      summary,
     );
-  };
-
-  const submitExam = () => {
-    for (const s of submitters) s();
-    submitted = true;
-    revealed = solution?.steps.length ?? 0;
-    toast('Beadva: a megoldás most már megnézhető');
-    renderPanel();
-    loadPlayer();
-  };
-
-  const modeSeg = segmented<'gyakorlo' | 'vizsga'>(
-    'Mód',
-    [
-      { value: 'gyakorlo', label: 'Gyakorló' },
-      { value: 'vizsga', label: 'Vizsga' },
-    ],
-    settings.mode,
-    (v) => {
-      update({ mode: v });
-      newProblem();
-    },
-    'sm',
-  );
-
-  /** A tipp-gombok és a rejtett megoldás állapota. */
-  const solutionControls = (): HTMLElement | null => {
-    if (!solution) return null;
-    const total = solution.steps.length;
-    if (isExam() && !submitted) {
-      return h('p', { class: 'panel-empty' }, 'Vizsga mód: a megoldás a beadás után látható. Írd be a válaszaidat, aztán add be.');
-    }
-    if (isExam() || revealed >= total) return null;
-    const tip = button(revealed === 0 ? 'Tipp: első lépés' : 'Tipp: következő lépés', () => reveal(revealed + 1), 'secondary');
-    const all = button('Teljes megoldás', () => reveal(total), 'primary');
-    const trick = button(
-      'Trükk-tipp',
-      () => {
-        if (!trickText) dailyEvent('trick');
-        trickText = trickHint(problem!, settings.starDelta);
-        renderPanel();
+    const levels = dc ? DC_LEVELS : AC_LEVELS;
+    const levelSel = select<string>(
+      'Nehézség',
+      levels.map((l) => ({ value: l.id, label: l.name })),
+      dc ? settings.dcLevel : settings.acLevel,
+      (v) => {
+        if (dc) update({ dcLevel: v as Level });
+        else update({ acLevel: v as AcLevel });
+        onChange();
       },
-      'quiet',
     );
-    return h(
-      'div',
-      { class: 'hint-box' },
-      revealed === 0 ? h('p', { class: 'hint-lead', text: 'Próbáld meg előbb magad! Ha elakadsz, a tipp csak a következő lépést mutatja meg.' }) : null,
-      h('div', { class: 'hint-actions' }, tip, all, trick),
-      trickText ? h('p', { class: 'hint-trick', text: trickText }) : null,
-    );
+    const syncLevel = () => {
+      const forced = dc && settings.dcTopic === 'zh';
+      levelSel.setDisabled(forced);
+    };
+    syncLevel();
+    const hint = h('span', { class: 'picker-hint', text: topics.find((t) => t.id === (dc ? settings.dcTopic : settings.acTopic))?.hint ?? '' });
+    return h('div', { class: 'picker' }, h('label', { class: 'picker-field' }, h('span', { text: 'Témakör' }), topicSel.el), h('label', { class: 'picker-field' }, h('span', { text: 'Nehézség' }), levelSel.el), hint);
   };
 
-  const reveal = (n: number) => {
-    const total = solution?.steps.length ?? 0;
-    // Napi kihívásban: minden tipp-lépés levonás, a teljes megoldás nullázza a feladatot.
-    if (n >= total) dailyEvent('solution');
-    else for (let k = revealed; k < n; k++) dailyEvent('tip');
-    revealed = Math.min(n, total);
-    if (solution && revealed >= solution.steps.length) showAll = true;
-    renderPanel();
-    loadPlayer(true);
+  /** A gyakorló feladat: egyenáramnál a választott módszerhez illő, ha talál ilyet. */
+  const practiceTask = (seed = randomSeed()): Task => {
+    if (settings.domain === 'ac') return makeTask({ domain: 'ac', topic: settings.acTopic, level: settings.acLevel, seed });
+    const level: Level = settings.dcTopic === 'zh' ? 'zh' : settings.dcLevel;
+    const found = findFor(settings.method, settings.dcTopic, level);
+    return dcTask(generateProblem({ seed: found ?? seed, topic: settings.dcTopic, level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode }));
   };
 
-  /** A lejátszó csak a már felfedett lépéseket kapja. */
-  const loadPlayer = (toLast = false) => {
-    const visible = solution ? solution.steps.slice(0, revealed) : [];
-    player.load(visible);
-    setDockEnabled(visible.length > 0);
-    if (toLast && visible.length) player.go(visible.length - 1);
-    if (!visible.length) applyHighlight(-1);
+  /** Seed, amivel a feladat az adott módszerrel a legkönnyebb (vagy legalább megoldható). */
+  const findFor = (m: MethodId, topic: Topic, level: Level): string | null => {
+    for (const relaxed of [false, true])
+      for (let i = 0; i < (relaxed ? 30 : 40); i++) {
+        const s = randomSeed();
+        try {
+          const p = generateProblem({ seed: s, topic, level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode });
+          if (methodFit(m, p, relaxed).ok) return s;
+        } catch {
+          // Ez a seed nem adott érvényes feladatot.
+        }
+      }
+    return null;
   };
 
-  /** Ellenőrző nézet: minden alkalmazható módszer eredménye egymás mellett, MNA és mérlegek. */
-  const verifyView = (): HTMLElement => {
-    const v = verify(problem!);
-    const names = new Map(methodList(true).map((m) => [m.id, m.label]));
-    const fmt = (x: number | undefined, unit: string | null) => (x === undefined ? '–' : unit ? formatQuantity(x, unit as 'V') : formatNumber(x));
-    const ok = (x: number | undefined, ref: number) => x !== undefined && Math.abs(Math.abs(x) - Math.abs(ref)) <= 1e-9 * Math.max(1, Math.abs(ref));
-    return h(
-      'section',
-      { class: 'verify-card', attrs: { 'aria-label': 'Ellenőrző nézet' } },
-      h('h3', { class: 'chart-title', text: 'Ellenőrző nézet' }),
-      h('p', { class: 'step-note', text: 'Minden alkalmazható módszer saját számolása egymás mellett, és a referencia (MNA). Ha minden pipa zöld, a módszerek egyetértenek.' }),
-      h(
-        'div',
-        { class: 'table-wrap' },
-        h(
-          'table',
-          { class: 'value-table' },
-          h('thead', {}, h('tr', {}, h('th', { text: 'Kérdés' }), h('th', { text: 'MNA' }), ...v.methods.map((m) => h('th', { text: names.get(m) ?? m })))),
-          h(
-            'tbody',
-            {},
-            ...v.rows.map((r, i) =>
-              h(
-                'tr',
-                {},
-                h('td', { text: v.rows.length > 1 ? `${String.fromCharCode(97 + i)})` : '1.' }),
-                h('td', { text: fmt(r.reference, r.unit) }),
-                ...v.methods.map((m) => h('td', { class: r.byMethod[m] === undefined ? '' : ok(r.byMethod[m], r.reference) ? 'is-ok-text' : 'is-neg', text: r.byMethod[m] === undefined ? '–' : `${fmt(r.byMethod[m], r.unit)} ${ok(r.byMethod[m], r.reference) ? '✓' : '✗'}` })),
-              ),
-            ),
-          ),
-        ),
-      ),
-      h(
-        'ul',
-        { class: 'step-bullets' },
-        h('li', { text: `Teljesítménymérleg: ΣP = ${formatQuantity(Math.abs(v.powerSum) < 1e-9 ? 0 : v.powerSum, 'W')} ${Math.abs(v.powerSum) < 1e-9 ? '✓' : '✗'}` }),
-        h('li', { text: `Kirchhoff-törvények: a legnagyobb eltérés ${formatNumber(v.kirchhoffResidual < 1e-12 ? 0 : v.kirchhoffResidual)} ${v.kirchhoffResidual < 1e-9 ? '✓' : '✗'}` }),
-      ),
-    );
-  };
+  // ───────── Gyakorlás ─────────
 
-  const renderPanel = (reason?: string, alternatives: MethodId[] = []) => {
-    const method = methodList(settings.starDelta).find((m) => m.id === settings.method)!;
-    const headRow = h('div', { class: 'panel-head' }, h('h2', { class: 'panel-title', text: solution?.title ?? method.label }), panelCount);
-    const modeRow = h(
-      'div',
-      { class: 'mode-row' },
-      settings.dailyActive ? h('span', { class: 'mode-daily', text: 'Napi kihívás: azonnali ellenőrzés, pontozással' }) : modeSeg.el,
-      isExam()
-        ? toggle('Időmérő', settings.examTimer, (v) => {
-            update({ examTimer: v });
-            timerEl.textContent = v ? timerEl.textContent : '';
-          }).el
-        : null,
-      isExam() && settings.examTimer ? timerEl : null,
-      h('span', { class: 'spacer' }),
-      !(isExam() && !submitted) && !dailyUnsolved()
-        ? button(
-            verifyOpen ? 'Ellenőrzés elrejtése' : 'Ellenőrző nézet',
-            () => {
-              verifyOpen = !verifyOpen;
-              renderPanel();
-            },
-            'quiet',
-          )
-        : null,
-    );
-    const extras: HTMLElement[] = [];
-    if (settings.method === 'kirchhoff' && solution) {
-      extras.push(
-        toggle('Ellentétes körüljárás', reverse, (v) => {
-          reverse = v;
-          solveCurrent();
-        }).el,
-      );
-    }
-    let body: HTMLElement | null;
-    const visibleSteps = solution ? solution.steps.slice(0, revealed) : [];
-    if (solution) {
-      steps = visibleSteps.length
-        ? stepList(visibleSteps, (i) => {
-            player.pause();
-            player.go(i);
-          })
-        : null;
-      body = steps?.el ?? null;
-    } else {
-      steps = null;
-      const names = new Map(methodList(settings.starDelta).map((m) => [m.id, m.label]));
-      body = h(
-        'div',
-        { class: 'panel-empty' },
-        h('p', { text: reason ?? 'Ehhez a feladathoz ez a módszer nem alkalmazható.' }),
-        alternatives.length
-          ? h(
-              'div',
-              { class: 'alt-methods' },
-              ...alternatives.map((m) =>
-                button(
-                  names.get(m) ?? m,
-                  () => {
-                    update({ method: m });
-                    methodSeg.set(m);
-                    solveCurrent();
-                  },
-                  'quiet',
-                ),
-              ),
-            )
-          : null,
-      );
-    }
-    const chart = problem?.topic === 'valodi-gen' ? loadChart(problem) : null;
-    const controls = solutionControls();
-    panel.replaceChildren(
-      headRow,
-      modeRow,
-      ...extras,
-      ...(body ? [body] : []),
-      ...(controls ? [controls] : []),
-      ...(verifyOpen && problem && !(isExam() && !submitted) && !dailyUnsolved() ? [verifyView()] : []),
-      ...(chart ? [chart] : []),
-      answersSection(),
-    );
-    panel.classList.remove('swap');
-    void panel.offsetWidth;
-    panel.classList.add('swap');
-  };
-
-  // ───────── Lejátszósáv ─────────
-
-  const bar = stepBar((i) => {
-    player.pause();
-    player.go(i);
-  });
-  const playBtn = iconButton('Lejátszás', ICONS.play, () => player.toggle(), 'primary', true);
-  const prevBtn = iconButton('Előző lépés', ICONS.prev, () => {
-    player.pause();
-    player.prev();
-  });
-  const nextBtn = iconButton('Következő lépés', ICONS.next, () => {
-    player.pause();
-    player.next();
-  });
-  const restartBtn = iconButton('Újrakezdés', ICONS.restart, () => player.restart());
-  const count = h('span', { class: 'dock-count', text: '0 / 0' });
-
-  const player = new Player({
-    onStep: (i) => {
-      steps?.show(i, player.getSpeed(), true);
-      applyHighlight(i);
-      count.textContent = `${i + 1} / ${player.count}`;
-      panelCount.textContent = solution ? `${i + 1} / ${player.count}` : '';
-      prevBtn.setAttribute('aria-disabled', String(i <= 0));
-      nextBtn.setAttribute('aria-disabled', String(i >= player.count - 1));
-    },
-    onProgress: (i, p) => bar.update(player.count, i, p),
-    onPlaying: (playing) => {
-      playBtn.replaceChildren(icon(playing ? ICONS.pause : ICONS.play, 16, true));
-      playBtn.setAttribute('aria-label', playing ? 'Szünet' : 'Lejátszás');
-      playBtn.title = playing ? 'Szünet' : 'Lejátszás';
-    },
-  });
-  player.setSpeed(settings.speed);
-
-  const dock = h(
-    'nav',
-    { class: 'dock', attrs: { 'aria-label': 'Lejátszás' } },
-    restartBtn,
-    prevBtn,
-    playBtn,
-    nextBtn,
-    bar.el,
-    count,
-    slider('Sebesség', 0.5, 2, 0.25, settings.speed, (v) => `${formatNumber(v, 3)}×`, (v) => {
-      update({ speed: v });
-      player.setSpeed(v);
-    }),
-  );
-
-  const setDockEnabled = (on: boolean) => {
-    for (const b of [playBtn, prevBtn, nextBtn, restartBtn]) b.setAttribute('aria-disabled', String(!on));
-    if (!on) {
-      bar.update(0, 0);
-      count.textContent = '0 / 0';
-    }
-  };
-
-  // ───────── Feladat és megoldás ─────────
-
-  const solveCurrent = () => {
-    if (!problem) return;
-    const usable = applicableMethods(problem);
-    const locked = lockedMethod();
-    if (locked && settings.method !== locked) {
-      update({ method: locked });
-      methodSeg.set(locked);
-    }
-    // Ha a választott módszer nem illik a feladathoz, de van más, arra váltunk (napi módban nem).
-    if (!locked && !usable.includes(settings.method) && usable.length) {
-      const next = settings.starDelta && usable.includes('csillag-delta') ? 'csillag-delta' : usable[0]!;
-      update({ method: next });
-      methodSeg.set(next);
-    }
-    const prefer = settings.starDeltaMode === 'veletlen' ? undefined : settings.starDeltaMode;
-    const r = solveWith(problem, settings.method, { reverse, prefer });
-    solution = r.ok ? r.solution : null;
-    const reasonText = r.ok ? undefined : usable.length ? r.reason : 'Ehhez a feladathoz nincs alkalmazható módszer.';
-    const alternatives = locked ? [] : usable.filter((m) => m !== settings.method);
-    // Ha már minden látszott (vagy beadták), módszerváltáskor is minden látszik.
-    if (solution && (showAll || submitted)) revealed = solution.steps.length;
-    else revealed = Math.min(revealed, solution?.steps.length ?? 0);
-    renderPanel(reasonText, alternatives);
-    loadPlayer();
-  };
-
-  const generate = () => {
+  let practiceCurrent: Task | null = null;
+  const newPractice = () => {
     try {
-      if (settings.dailyActive) {
-        const c = dailyChallenge(new Date(), settings.dailyLevel);
-        dailyIndex = Math.min(dailyIndex, c.tasks.length - 1);
-        const t = c.tasks[dailyIndex]!;
-        problem = dailyProblem(t);
-        seed = problem.seed;
-        dailyLoaded = `${c.day}|${settings.dailyLevel}|${t.id}`;
-        // Napi módban csak az a kérdés marad, amire a nap módszere választ ad.
-        const r = solveWith(problem, t.method);
-        if (r.ok) {
-          const answered = new Set(r.solution.answers.map((a) => a.questionId));
-          const kept = problem.questions.filter((q) => answered.has(q.id));
-          if (kept.length) problem = { ...problem, questions: kept };
-        }
-        if (settings.method !== t.method) {
-          update({ method: t.method });
-          methodSeg.set(t.method);
-        }
-        banner.render(c, dailyIndex);
-      } else {
-        dailyLoaded = null;
-        problem = generateProblem({ seed, topic: settings.topic, level: settings.level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode });
-      }
+      practiceCurrent = practiceTask();
     } catch (e) {
       toast(String(e instanceof Error ? e.message : e));
       return;
     }
-    seedInput.value = seed;
-    newBtn.hidden = settings.dailyActive;
-    reverse = false;
-    revealed = 0;
-    lastIndex = -1;
-    showAll = false;
-    submitted = false;
-    trickText = '';
-    recorded.clear();
-    typed.clear();
-    results.clear();
-    cellState.clear();
-    summaries.clear();
-    examStart = performance.now();
-    timerEl.textContent = isExam() && settings.examTimer ? '00:00' : '';
-    const p = problem;
-    const parts = [TOPIC_NAMES[p.topic], LEVEL_NAMES[p.level], p.topology === 'egyedi' ? null : TOPOLOGY_NAMES[p.topology], `${p.stats.sources} forrás`, `${p.stats.resistors} ellenállás`];
-    metaText.textContent = parts.filter(Boolean).join(' · ');
-    const fit = settings.dailyActive ? null : methodFit(settings.method, p, true);
-    fitText.textContent = fit?.ok && fit.why ? fit.why : '';
-    fitText.hidden = !fitText.textContent;
-    title.textContent = p.questions.length === 1 ? p.questions[0]!.text : `${TOPIC_NAMES[p.topic]}: ${p.questions.length} részkérdés`;
-    shownCircuit = null;
-    showCircuit(p.circuit);
-    syncGate();
-    solveCurrent();
+    viewer.load(practiceCurrent, { mode: 'practice', method: settings.method, allowNew: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const newProblem = () => {
-    const found = settings.dailyActive ? null : findFor(settings.method, [settings.topic]);
-    seed = found?.seed ?? randomSeed();
-    generate();
+  /** Módszerválasztás: ha a mostani feladathoz jó, marad a feladat; ha nem, illőt keresünk. */
+  const pickMethod = (m: MethodId) => {
+    update({ method: m });
+    const t = viewer.current;
+    if (t?.dc && applicableMethods(t.dc).includes(m)) {
+      viewer.setMethod(m);
+      return;
+    }
+    if (settings.mode !== 'gyakorlas') return viewer.setMethod(m);
+    toast('Ehhez a feladathoz ez a módszer nem alkalmazható: hoztam egy hozzáillőt.');
+    newPractice();
   };
 
-  // ───────── Billentyűk ─────────
+  const showPractice = () => {
+    main.replaceChildren(h('div', { class: 'mode-bar' }, topicPicker(() => newPractice())), viewer.el);
+    if (!practiceCurrent || practiceCurrent.domain !== settings.domain) newPractice();
+    else viewer.load(practiceCurrent, { mode: 'practice', method: settings.method, allowNew: true });
+  };
+
+  // ───────── Időre ─────────
+
+  let timer = 0;
+  const stopTimer = () => window.clearInterval(timer);
+  const clock = (ms: number) => {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  };
+
+  const showTimed = () => {
+    stopTimer();
+    const minutes = select<string>(
+      'Idő',
+      [3, 5, 10, 15, 20, 30].map((m) => ({ value: String(m), label: `${m} perc` })),
+      String(settings.timedMinutes),
+      (v) => update({ timedMinutes: Number(v) }),
+    );
+    const start = button('Indítás', () => runTimed(), 'primary');
+    const gate = h(
+      'section',
+      { class: 'card gate' },
+      h('h2', { class: 'gate-title', text: 'Megoldás időre' }),
+      h('p', { class: 'gate-info', text: 'Kapsz egy feladatot a kiválasztott témakörből. Az óra az Indításkor indul; a megoldás csak beadás után (vagy ha lejár az idő) látszik. Utána végig tudod nézni a levezetést.' }),
+      topicPicker(() => {}),
+      h('div', { class: 'gate-row' }, h('label', { class: 'picker-field' }, h('span', { text: 'Rendelkezésre álló idő' }), minutes.el), start),
+    );
+    main.replaceChildren(gate);
+  };
+
+  const runTimed = () => {
+    let task: Task;
+    try {
+      task = practiceTask();
+    } catch (e) {
+      toast(String(e instanceof Error ? e.message : e));
+      return;
+    }
+    const total = settings.timedMinutes * 60_000;
+    const t0 = Date.now();
+    const time = h('span', { class: 'timer num', text: clock(total) });
+    const status = h('span', { class: 'timer-status', text: 'hátra' });
+    const submitBtn = button('Beadás', () => finish(false), 'primary');
+    const again = button('Új feladat időre', () => runTimed(), 'secondary');
+    again.hidden = true;
+    const result = h('div', { class: 'run-result', attrs: { 'aria-live': 'polite' } });
+    const bar = h('div', { class: 'run-bar card' }, icon(ICONS.timer, 18), time, status, h('span', { class: 'spacer' }), result, submitBtn, again);
+    main.replaceChildren(bar, viewer.el);
+    viewer.load(task, { mode: 'test', method: settings.method });
+    const finish = (timeout: boolean) => {
+      stopTimer();
+      const used = Date.now() - t0;
+      const s = viewer.submit();
+      submitBtn.hidden = true;
+      again.hidden = false;
+      time.textContent = clock(used);
+      status.textContent = timeout ? 'lejárt az idő' : 'alatt';
+      result.textContent = `${s.correct} / ${s.total} helyes`;
+      result.className = `run-result ${s.correct === s.total ? 'is-good' : 'is-bad'}`;
+      toast(timeout ? 'Lejárt az idő: itt a megoldás.' : s.correct === s.total ? 'Minden helyes!' : 'Beadva: nézd meg a megoldást.');
+    };
+    timer = window.setInterval(() => {
+      const left = total - (Date.now() - t0);
+      time.textContent = clock(left);
+      bar.classList.toggle('is-urgent', left < 60_000);
+      if (left <= 0) finish(true);
+    }, 250);
+  };
+
+  // ───────── Próbavizsga ─────────
+
+  const showExamStart = () => {
+    stopTimer();
+    const cards = EXAMS.map((e) =>
+      h(
+        'button',
+        { class: `exam-card${settings.examKind === e.kind ? ' is-on' : ''}`, attrs: { type: 'button', 'aria-pressed': String(settings.examKind === e.kind) }, on: { click: () => (update({ examKind: e.kind }), showExamStart()) } },
+        h('span', { class: 'exam-name', text: e.name }),
+        h('span', { class: 'exam-time', text: `${e.minutes} perc` }),
+        h('span', { class: 'exam-desc', text: e.description }),
+      ),
+    );
+    main.replaceChildren(
+      h(
+        'section',
+        { class: 'card gate' },
+        h('h2', { class: 'gate-title', text: 'Próbavizsga' }),
+        h('p', { class: 'gate-info', text: 'Egy teljes feladatsor a ZH-k és vizsgák mintájára, egy közös órával. A feladatok között szabadon ugrálhatsz; a megoldások a beadás után látszanak, feladatonként végignézhetők.' }),
+        h('div', { class: 'exam-cards' }, ...cards),
+        h('div', { class: 'gate-row' }, button('Próbavizsga indítása', () => runExam(settings.examKind), 'primary')),
+      ),
+    );
+  };
+
+  const runExam = (kind: ExamKind) => {
+    stopTimer();
+    const info = EXAMS.find((e) => e.kind === kind)!;
+    let tasks: Task[];
+    try {
+      tasks = examTasks(kind, randomSeed());
+    } catch (e) {
+      toast(String(e instanceof Error ? e.message : e));
+      return;
+    }
+    const answers = tasks.map(() => new Map<string, string>());
+    let current = 0;
+    let submitted = false;
+    const total = info.minutes * 60_000;
+    const t0 = Date.now();
+    const time = h('span', { class: 'timer num', text: clock(total) });
+    const tabs = h('div', { class: 'exam-tabs', attrs: { role: 'tablist', 'aria-label': 'Feladatok' } });
+    const submitBtn = button('Beadás', () => {
+      if (!submitted && !confirm('Biztosan beadod? Utána már nem tudod módosítani a válaszokat.')) return;
+      finish();
+    }, 'primary');
+    const summaryBtn = button('Összesítés', () => showSummary(), 'secondary');
+    summaryBtn.hidden = true;
+    const bar = h('div', { class: 'run-bar card exam-bar' }, icon(ICONS.timer, 18), time, tabs, h('span', { class: 'spacer' }), summaryBtn, submitBtn);
+    const body = h('div', { class: 'exam-body' });
+    main.replaceChildren(bar, body);
+
+    const renderTabs = () => {
+      tabs.replaceChildren(
+        ...tasks.map((t, i) => {
+          const filled = [...answers[i]!.values()].some((v) => v.trim());
+          const sc = submitted ? scoreTask(t, answers[i]!) : null;
+          const cls = ['exam-tab', i === current ? 'is-current' : '', filled ? 'is-filled' : '', sc ? (sc.correct === sc.total ? 'is-good' : sc.correct > 0 ? 'is-part' : 'is-bad') : ''].filter(Boolean).join(' ');
+          return h('button', { class: cls, attrs: { type: 'button', role: 'tab', 'aria-selected': String(i === current), title: t.topicName }, on: { click: () => open(i) }, text: String(i + 1) });
+        }),
+      );
+    };
+    const open = (i: number) => {
+      // A beírt válaszok megmaradnak (a nézet a feladat saját táblájába ír).
+      current = i;
+      const t = tasks[i]!;
+      const nav = h(
+        'div',
+        { class: 'exam-nav' },
+        h('span', { class: 'exam-count', text: `${i + 1}. feladat / ${tasks.length}` }),
+        h('span', { class: 'spacer' }),
+        i > 0 ? button('← Előző', () => open(i - 1), 'quiet') : null,
+        i < tasks.length - 1 ? button('Következő →', () => open(i + 1), 'secondary') : null,
+      );
+      body.replaceChildren(nav, viewer.el);
+      viewer.load(t, { mode: 'test', method: t.dc ? bestMethod(t) : undefined, answers: answers[i], submitted });
+      renderTabs();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    const showSummary = () => {
+      const scores: Score[] = tasks.map((t, i) => scoreTask(t, answers[i]!));
+      const got = scores.reduce((a, s) => a + s.correct, 0);
+      const all = scores.reduce((a, s) => a + s.total, 0);
+      const pct = all ? Math.round((got / all) * 100) : 0;
+      body.replaceChildren(
+        h(
+          'section',
+          { class: 'card exam-summary' },
+          h('h2', { class: 'gate-title', text: `Eredmény: ${got} / ${all} (${pct}%)` }),
+          h('p', { class: 'gate-info', text: pct >= 85 ? 'Nagyon szép! Ez a ZH-n is jó jegy lenne.' : pct >= 50 ? 'Megvan az alap. Nézd végig a hibás feladatok levezetését, és gyakorold azokat a témaköröket.' : 'Még gyakorolni kell. Nyisd meg a feladatokat, és lépésenként nézd végig a megoldást.' }),
+          h(
+            'div',
+            { class: 'table-wrap' },
+            h(
+              'table',
+              { class: 'value-table exam-table' },
+              h('thead', {}, h('tr', {}, h('th', { text: '#' }), h('th', { text: 'Témakör' }), h('th', { text: 'Helyes' }), h('th', { text: 'Helyes válasz' }), h('th', { text: '' }))),
+              h(
+                'tbody',
+                {},
+                ...tasks.map((t, i) =>
+                  h(
+                    'tr',
+                    {},
+                    h('td', { text: String(i + 1) }),
+                    h('td', { text: t.topicName }),
+                    h('td', { class: scores[i]!.correct === scores[i]!.total ? 'is-ok-text' : 'is-neg', text: `${scores[i]!.correct} / ${scores[i]!.total}` }),
+                    h('td', { class: 'exam-answer', text: t.questions.map((q) => (q.table ? 'táblázat' : q.fields.map((f) => fieldAnswerText(f)).join(', '))).join('; ') }),
+                    h('td', {}, button('Megoldás', () => open(i), 'quiet')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          h('div', { class: 'gate-row' }, button('Új próbavizsga', () => showExamStart(), 'primary')),
+        ),
+      );
+      renderTabs();
+    };
+    const finish = () => {
+      stopTimer();
+      submitted = true;
+      submitBtn.hidden = true;
+      summaryBtn.hidden = false;
+      time.textContent = clock(Date.now() - t0);
+      showSummary();
+    };
+    timer = window.setInterval(() => {
+      const left = total - (Date.now() - t0);
+      time.textContent = clock(left);
+      bar.classList.toggle('is-urgent', left < 5 * 60_000);
+      if (left % 5000 < 260) renderTabs();
+      if (left <= 0) {
+        toast('Lejárt az idő: a próbavizsgát beadtam.');
+        finish();
+      }
+    }, 250);
+    open(0);
+  };
+
+  /** Egyenáramú feladathoz a legkézenfekvőbb módszer (próbavizsgában ezzel mutatjuk a megoldást). */
+  const bestMethod = (t: Task): MethodId => {
+    const usable = applicableMethods(t.dc!);
+    const order: MethodId[] = ['redukcio', 'thevenin', 'hurokaram', 'csomoponti', 'szuperpozicio', 'kirchhoff', 'csillag-delta'];
+    const fit = order.find((m) => usable.includes(m) && methodFit(m, t.dc!, false).ok);
+    return fit ?? order.find((m) => usable.includes(m)) ?? 'redukcio';
+  };
+
+  // ───────── Napi feladatok ─────────
+
+  let dailyIndex = 0;
+  let dailyOpened = 0;
+  const showDaily = () => {
+    stopTimer();
+    const now = new Date();
+    const c = dailyChallenge(now, settings.dailyLevel, settings.domain);
+    dailyIndex = Math.min(dailyIndex, c.tasks.length - 1);
+    const t = c.tasks[dailyIndex]!;
+    const done = (id: string) => isDone(c.day, settings.domain, settings.dailyLevel, id);
+    const lvl = segmented<DailyLevel>(
+      'Nehézség',
+      DAILY_LEVELS.map((l) => ({ value: l.id, label: l.label })),
+      settings.dailyLevel,
+      (v) => {
+        update({ dailyLevel: v });
+        dailyIndex = 0;
+        showDaily();
+      },
+      'sm',
+    );
+    const chips = h(
+      'div',
+      { class: 'daily-tasks' },
+      ...c.tasks.map((x, i) =>
+        h(
+          'button',
+          { class: `daily-chip${i === dailyIndex ? ' is-current' : ''}${done(x.id) ? ' is-done' : ''}`, attrs: { type: 'button', 'aria-pressed': String(i === dailyIndex) }, on: { click: () => ((dailyIndex = i), showDaily()) } },
+          h('span', { class: 'daily-chip-num' }, done(x.id) ? icon(ICONS.check, 12) : String(i + 1)),
+          x.title,
+        ),
+      ),
+    );
+    const doneCount = c.tasks.filter((x) => done(x.id)).length;
+    const st = streak(loadProgress(), c.day, (o) => dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - o)));
+    const left = msUntilNext(now);
+    const date = now.toLocaleDateString('hu-HU', { month: 'long', day: 'numeric', weekday: 'long' });
+    const banner = h(
+      'section',
+      { class: 'card daily' },
+      h('div', { class: 'daily-top' }, h('div', {}, h('h2', { class: 'daily-title', text: 'Napi feladatok' }), h('p', { class: 'daily-sub', text: `${date} · ${settings.domain === 'dc' ? 'Egyenáram' : 'Váltóáram'} · mindenkinek ugyanez a sor` })), h('div', { class: 'daily-stats' }, h('span', { text: `${doneCount} / ${c.tasks.length} kész` }), h('span', { text: `${st} napos sorozat` }), h('span', { text: `Új sor: ${Math.floor(left / 3_600_000)} óra ${Math.floor((left % 3_600_000) / 60_000)} perc múlva` }))),
+      lvl.el,
+      chips,
+      h('p', { class: 'daily-tip' }, h('strong', { text: 'Tipp ehhez a feladathoz: ' }), t.tip),
+      h('p', { class: 'daily-tip' }, h('strong', { text: 'A nap tudnivalója: ' }), c.studyTip),
+    );
+    let task: Task;
+    try {
+      if (t.dc) {
+        // Napi feladatnál csak az a kérdés marad, amire a nap módszere választ ad.
+        const p = dailyProblem(t);
+        const r = solveWith(p, t.dc.method);
+        const answered = r.ok ? new Set(r.solution.answers.map((a) => a.questionId)) : null;
+        const kept = answered ? p.questions.filter((q) => answered.has(q.id)) : p.questions;
+        task = dcTask(kept.length ? { ...p, questions: kept } : p);
+      } else task = makeTask({ domain: 'ac', topic: t.ac!.topic, level: t.ac!.level, seed: t.seed });
+    } catch (e) {
+      toast(String(e instanceof Error ? e.message : e));
+      return;
+    }
+    main.replaceChildren(viewer.el);
+    dailyOpened = Date.now();
+    viewer.load(task, { mode: 'practice', method: t.dc?.method, lockedMethod: !!t.dc, banner });
+  };
+
+  const onSolved = () => {
+    if (settings.mode !== 'napi') {
+      toast('Minden válasz helyes! Új feladat: N');
+      return;
+    }
+    const c = dailyChallenge(new Date(), settings.dailyLevel, settings.domain);
+    const t = c.tasks[dailyIndex]!;
+    markDone(c.day, settings.domain, settings.dailyLevel, t.id, Math.round((Date.now() - dailyOpened) / 1000));
+    const next = c.tasks.findIndex((x, i) => i > dailyIndex && !isDone(c.day, settings.domain, settings.dailyLevel, x.id));
+    toast(next >= 0 ? 'Kész! Jöhet a következő napi feladat.' : 'Kész a mai sor! Holnap új jön.');
+    window.setTimeout(() => {
+      if (settings.mode !== 'napi') return;
+      if (next >= 0) dailyIndex = next;
+      showDaily();
+    }, 1400);
+  };
+
+  // ───────── Beállítások ─────────
+
+  const openSettings = () => {
+    const dialog = h('dialog', { class: 'sheet', attrs: { 'aria-label': 'Beállítások' } });
+    const close = () => {
+      dialog.close();
+      dialog.remove();
+    };
+    const themeSeg = segmented<ThemeChoice>(
+      'Színmód',
+      [
+        { value: 'system', label: 'Rendszer' },
+        { value: 'light', label: 'Világos' },
+        { value: 'dark', label: 'Sötét' },
+      ],
+      settings.theme,
+      (v) => {
+        update({ theme: v });
+        applyTheme();
+      },
+      'sm',
+    );
+    const sdMode = segmented(
+      'Csillag-delta irány',
+      [
+        { value: 'delta-csillag', label: 'Δ → Y' },
+        { value: 'csillag-delta', label: 'Y → Δ' },
+        { value: 'veletlen', label: 'Véletlen' },
+      ],
+      settings.starDeltaMode,
+      (v) => update({ starDeltaMode: v as Settings['starDeltaMode'] }),
+      'sm',
+    );
+    sdMode.el.hidden = !settings.starDelta;
+    const row = (label: string, desc: string, control: HTMLElement) => h('div', { class: 'sheet-row' }, h('div', { class: 'sheet-text' }, h('span', { class: 'sheet-label', text: label }), h('span', { class: 'sheet-desc', text: desc })), control);
+    const changed = () => {
+      if (settings.mode === 'gyakorlas') newPractice();
+    };
+    dialog.append(
+      h('div', { class: 'sheet-head' }, h('h2', { text: 'Beállítások' }), iconButton('Bezárás', ICONS.close, close)),
+      row('Színmód', 'Világos vagy sötét megjelenés.', themeSeg.el),
+      row(
+        'Animáció sebessége',
+        'Milyen gyorsan épüljenek fel a lépések lejátszáskor.',
+        slider('Sebesség', 0.5, 2, 0.25, settings.speed, (v) => `${formatNumber(v, 3)}×`, (v) => {
+          update({ speed: v });
+          viewer.setSpeed(v);
+        }),
+      ),
+      row('Áramkör újrarajzolása', 'Egyenáram: minden összevonás után újrarajzolja az áramkört, az eredő ellenállással.', toggle('', settings.redraw, (v) => update({ redraw: v })).el),
+      row(
+        'Csillag-delta feladatok',
+        'Egyenáram: hidas hálózatok, amikhez csillag-delta átalakítás kell.',
+        toggle('', settings.starDelta, (v) => {
+          update({ starDelta: v, ...(v ? {} : { method: settings.method === 'csillag-delta' ? 'redukcio' : settings.method }) });
+          sdMode.el.hidden = !v;
+          changed();
+        }).el,
+      ),
+      sdMode.el,
+      row('Könnyített grafika', 'Elmosás és díszítő animációk nélkül, ha akadozik a gép.', toggle('', isLite(), (v) => setLite(v)).el),
+      h('p', { class: 'sheet-keys', text: 'Billentyűk: N – új feladat, szóköz – lejátszás, ← → – lépések.' }),
+    );
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.addEventListener('click', (e) => e.target === dialog && close());
+    document.body.append(dialog);
+    dialog.showModal();
+  };
+
+  // ───────── Útvonal ─────────
+
+  const route = () => {
+    stopTimer();
+    modeSeg.set(settings.mode);
+    domainSeg.set(settings.domain);
+    document.title = `${MODE_NAMES[settings.mode]} · Villamosságtan`;
+    if (settings.mode === 'gyakorlas') showPractice();
+    else if (settings.mode === 'idore') showTimed();
+    else if (settings.mode === 'vizsga') showExamStart();
+    else showDaily();
+  };
 
   document.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
-    if (t.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === 'n' || e.key === 'N') {
+    if (t.closest('input, select, textarea, dialog') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if ((e.key === 'n' || e.key === 'N') && settings.mode === 'gyakorlas') {
       e.preventDefault();
-      if (settings.dailyActive) {
-        const len = dailyChallenge(new Date(), settings.dailyLevel).tasks.length;
-        dailyIndex = (dailyIndex + 1) % len;
-        generate();
-      } else newProblem();
-    } else if ((e.key === 'm' || e.key === 'M') && !lockedMethod()) {
-      e.preventDefault();
-      const opts = methodOptions();
-      const i = opts.findIndex((o) => o.value === settings.method);
-      const next = opts[(i + 1) % opts.length]!.value;
-      update({ method: next });
-      methodSeg.set(next);
-      solveCurrent();
+      newPractice();
     } else if (e.key === ' ' && !t.closest('button')) {
       e.preventDefault();
-      player.toggle();
+      viewer.el.querySelector<HTMLButtonElement>('.dock .icon-btn-primary')?.click();
     } else if (e.key === 'ArrowRight' && !t.closest('[role=radiogroup]')) {
-      e.preventDefault();
-      player.pause();
-      player.next();
+      viewer.el.querySelector<HTMLButtonElement>('.dock [aria-label="Következő lépés"]')?.click();
     } else if (e.key === 'ArrowLeft' && !t.closest('[role=radiogroup]')) {
-      e.preventDefault();
-      player.pause();
-      player.prev();
+      viewer.el.querySelector<HTMLButtonElement>('.dock [aria-label="Előző lépés"]')?.click();
     }
   });
 
-  // Napi kihívásban a feladat (rajz, kérdés, megoldás) csak a Start után látszik; az óra is akkor indul.
-  const workspace = h('div', { class: 'workspace' }, canvasCard, panel);
-  const gateTitle = h('h3', { class: 'daily-gate-title' });
-  const gateInfo = h('p', { class: 'daily-gate-info' });
-  const startBtn = button('Start', () => {
-    const cur = dailyTask();
-    if (!cur) return;
-    openTask(cur.c.day, settings.dailyLevel, cur.t.id);
-    syncGate();
-    banner.render(cur.c, dailyIndex);
-  }, 'primary');
-  startBtn.classList.add('daily-gate-start');
-  const gate = h('section', { class: 'card daily-gate enter', attrs: { 'aria-label': 'Feladat indítása' } }, gateTitle, gateInfo, startBtn);
-  function syncGate() {
-    const cur = dailyTask();
-    const waiting = !!cur && !loadProgress()[cur.c.day]?.[settings.dailyLevel]?.[cur.t.id];
-    gate.hidden = !waiting;
-    workspace.hidden = waiting;
-    head.hidden = waiting;
-    dock.hidden = waiting;
-    if (!waiting || !cur) return;
-    gateTitle.textContent = `${cur.c.tasks.indexOf(cur.t) + 1}. feladat: ${cur.t.title}`;
-    gateInfo.textContent = `Csak akkor nyomd meg, ha neki is állsz: az óra a Start megnyomásakor indul, és utána nem áll meg (újratöltéskor sem). Célidő: ${PAR_MINUTES[settings.dailyLevel]} perc, a felén belül dupla pont.`;
-    if (document.activeElement === document.body) startBtn.focus();
-  }
+  // Éjfélkor új napi sor.
+  let day = dayKey(new Date());
+  window.setInterval(() => {
+    const now = dayKey(new Date());
+    if (now === day) return;
+    day = now;
+    if (settings.mode === 'napi') {
+      dailyIndex = 0;
+      showDaily();
+      toast('Itt az új napi feladatsor!');
+    }
+  }, 30_000);
 
-  root.replaceChildren(toolbar, h('main', { class: 'main' }, banner.el, gate, head, workspace), dock);
   applyTheme();
-  syncLevel();
-  generate();
+  route();
 }

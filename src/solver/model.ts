@@ -1,9 +1,18 @@
 // Az áramkör két szintje:
 //  1. Circuit: rajzolható, rácsra illesztett elrendezés (pontok + egyenes ágak, ágonként sorban álló elemekkel).
 //  2. Netlist: tisztán villamos nézet (csomópontok + kétpólusú elemek), ezt kapja a megoldó.
-// Az elemmodell általános (kind + érték), AC-bővítésnél új `kind`-ok (L, C) és komplex érték jöhet.
+// Az elemmodell általános (kind + érték). Szinuszos hálózatokban L (tekercs) és C (kondenzátor) is
+// szerepel; a forrás értéke ott a csúcsérték, a kezdőfázis a `phase` mezőben. A K a kapcsoló
+// (bekapcsolási jelenségeknél): a megoldó zárt kapcsolóként, vezetékként kezeli.
 
-export type ElementKind = 'R' | 'V' | 'I';
+import type { Unit } from '../units';
+
+export type ElementKind = 'R' | 'V' | 'I' | 'L' | 'C' | 'K';
+
+/** Forrás-e az elem (feszültség- vagy áramgenerátor). */
+export function isSource(kind: ElementKind): kind is 'V' | 'I' {
+  return kind === 'V' || kind === 'I';
+}
 
 export interface CircuitElement {
   /** Azonosító: R1, R2…, Ug1… (feszültséggenerátor), Ig1… (áramgenerátor). */
@@ -26,6 +35,10 @@ export interface CircuitElement {
   unknown?: boolean;
   /** Megjelenített név a felirat előtt (pl. "Rb", "Uth"): "Rb = 2 Ω". */
   name?: string;
+  /** Szinuszos forrás kezdőfázisa fokban (u(t) = value·cos(ωt + phase)). */
+  phase?: number;
+  /** A felirat teljes felülírása (pl. "10 V·cos(ωt)"). */
+  label?: string;
 }
 
 export interface GridPoint {
@@ -72,8 +85,8 @@ export interface Netlist<T = number> {
   elements: NetElement<T>[];
 }
 
-export function elementUnit(kind: ElementKind): 'Ω' | 'V' | 'A' {
-  return kind === 'R' ? 'Ω' : kind === 'V' ? 'V' : 'A';
+export function elementUnit(kind: ElementKind): Unit {
+  return kind === 'R' ? 'Ω' : kind === 'V' ? 'V' : kind === 'I' ? 'A' : kind === 'L' ? 'H' : kind === 'C' ? 'F' : '';
 }
 
 export function allElements(c: Circuit): CircuitElement[] {
