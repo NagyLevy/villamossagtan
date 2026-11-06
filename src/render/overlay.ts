@@ -163,8 +163,15 @@ export function nodeGeometry(ctx: OverlayContext, node: number): { points: Pt[];
 
 const TONE: Record<GroupRef['tone'], string> = { accent: 'var(--accent)', result: 'var(--result)', transform: 'var(--transform)' };
 
-function chip(x: number, y: number, text: string, color: string): string {
+/** A felirat-buborék a rajz keretén belül marad (nincs nagyítás, ami kihozná a látótérbe). */
+function chip(x0: number, y0: number, text: string, color: string, vb?: { x: number; y: number; width: number; height: number }): string {
   const w = textWidth(text, 12) + 14;
+  let x = x0;
+  let y = y0;
+  if (vb) {
+    x = Math.max(vb.x + 4, Math.min(x, vb.x + vb.width - w - 4));
+    y = Math.max(vb.y + 22, y);
+  }
   return `<g class="ov-chip"><rect x="${f(x)}" y="${f(y - 18)}" width="${f(w)}" height="20" rx="10" fill="var(--surface)" stroke="${color}" stroke-opacity="0.5"/><text x="${f(x + 7)}" y="${f(y - 4)}" fill="${color}" font-size="12" font-weight="600">${esc(text)}</text></g>`;
 }
 
@@ -174,7 +181,7 @@ function groupSvg(ctx: OverlayContext, g: GroupRef): { under: string; over: stri
   const c = TONE[g.tone];
   return {
     under: `<rect class="ov-group" x="${f(b.x1)}" y="${f(b.y1)}" width="${f(b.x2 - b.x1)}" height="${f(b.y2 - b.y1)}" rx="14" fill="${c}" fill-opacity="0.07" stroke="${c}" stroke-opacity="0.45" stroke-width="1.5" stroke-dasharray="${g.tone === 'result' ? '4 4' : 'none'}"/>`,
-    over: chip(b.x1, b.y1 - 4, g.label, c),
+    over: chip(b.x1, b.y1 - 4, g.label, c, ctx.layout.viewBox),
   };
 }
 

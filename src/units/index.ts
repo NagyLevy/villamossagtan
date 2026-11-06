@@ -1,7 +1,8 @@
 // Mértékegységek, SI-előtagok, magyar számformátum (tizedesvessző), válaszellenőrzés.
 // Minden függvény tiszta, a UI-tól független.
 
-export type Unit = 'V' | 'A' | 'Ω' | 'W';
+/** Mértékegységek: egyenáramú és szinuszos (váltakozó áramú) mennyiségek. */
+export type Unit = 'V' | 'A' | 'Ω' | 'W' | 'VA' | 'var' | 'S' | 'H' | 'F' | 's' | 'rad/s' | '°' | '';
 
 export interface Prefix {
   symbol: string;
@@ -10,6 +11,7 @@ export interface Prefix {
 
 /** A megjelenítéshez használt előtagok, növekvő sorrendben. */
 export const PREFIXES: readonly Prefix[] = [
+  { symbol: 'p', factor: 1e-12 },
   { symbol: 'n', factor: 1e-9 },
   { symbol: 'µ', factor: 1e-6 },
   { symbol: 'm', factor: 1e-3 },
@@ -18,8 +20,11 @@ export const PREFIXES: readonly Prefix[] = [
   { symbol: 'M', factor: 1e6 },
 ];
 
+const BASE_PREFIX: Prefix = PREFIXES.find((p) => p.factor === 1)!;
+
 /** Beíráskor elfogadott előtag-írásmódok (a µ többféle kódpontja és az "u" is). */
 const INPUT_PREFIXES: Record<string, number> = {
+  p: 1e-12,
   n: 1e-9,
   µ: 1e-6, // U+00B5
   μ: 1e-6, // U+03BC
@@ -36,7 +41,19 @@ const UNIT_ALIASES: Record<Unit, string[]> = {
   A: ['A', 'a', 'amper'],
   Ω: ['Ω', 'Ω', 'ohm', 'Ohm', 'OHM', 'ohmos'],
   W: ['W', 'w', 'watt'],
+  VA: ['VA', 'va', 'voltamper'],
+  var: ['var', 'VAr', 'VAR', 'Var'],
+  S: ['S', 'siemens'],
+  H: ['H', 'henry'],
+  F: ['F', 'farad'],
+  s: ['s', 'sec', 'mp'],
+  'rad/s': ['rad/s', 'rad/sec', '1/s'],
+  '°': ['°', 'fok', 'deg'],
+  '': [],
 };
+
+/** Előtag nélküli egységek (fok) és amiknél 1 alatt sincs előtag (ohm). */
+const NO_PREFIX = new Set<Unit>(['°', '']);
 
 const MINUS = '−'; // U+2212, tipográfiai mínusz a megjelenítéshez
 
@@ -63,10 +80,12 @@ export function formatNumber(x: number, sig = 4): string {
 /** Az előtag kiválasztása: a mantissza 1 és 1000 közé essen. Ohmnál 1 alatt nincs előtag (0,5 Ω, nem 500 mΩ). */
 export function choosePrefix(x: number, unit: Unit, sig = 4): Prefix {
   const abs = Math.abs(roundSig(x, sig));
-  const unitPrefix = PREFIXES[3]!;
+  const unitPrefix = BASE_PREFIX;
   if (abs === 0 || !Number.isFinite(abs)) return unitPrefix;
-  let candidates = PREFIXES;
+  if (NO_PREFIX.has(unit)) return unitPrefix;
+  let candidates: readonly Prefix[] = PREFIXES.filter((p) => p.factor >= 1e-9);
   if (unit === 'Ω') candidates = PREFIXES.filter((p) => p.factor >= 1);
+  if (unit === 'F') candidates = PREFIXES;
   let chosen = candidates[0]!;
   for (const p of candidates) {
     // A kerekítés után 1000-re ugró mantisszát is kezeljük (pl. 999,99 mA → 1 A).
@@ -85,7 +104,7 @@ export interface FormatOptions {
 /** Mennyiség kiírása előtaggal: pl. 0.0045, 'A' → "4,5 mA". A szám és az egység közt nem törő szóköz. */
 export function formatQuantity(x: number, unit: Unit, opts: FormatOptions = {}): string {
   const sig = opts.sig ?? 4;
-  const p = opts.prefix === false ? PREFIXES[3]! : choosePrefix(x, unit, sig);
+  const p = opts.prefix === false ? BASE_PREFIX : choosePrefix(x, unit, sig);
   return `${formatNumber(x / p.factor, sig)} ${p.symbol}${unit}`;
 }
 
@@ -108,7 +127,7 @@ export function parseQuantity(text: string, unit: Unit): ParseResult {
   const factor = unitFactor(rest, unit);
   if (factor !== null) return { ok: true, value: num * factor };
   for (const other of Object.keys(UNIT_ALIASES) as Unit[]) {
-    if (other !== unit && unitFactor(rest, other) !== null) {
+    if (other !== unit && other !== '' && UNIT_ALIASES[other].length && unitFactor(rest, other) !== null) {
       return { ok: false, error: `Rossz mértékegység: ${unit} kell, nem ${other}.` };
     }
   }
@@ -119,6 +138,7 @@ export function parseQuantity(text: string, unit: Unit): ParseResult {
 function unitFactor(rest: string, unit: Unit): number | null {
   const aliases = UNIT_ALIASES[unit];
   if (aliases.includes(rest)) return 1;
+  if (NO_PREFIX.has(unit)) return null;
   for (const [sym, factor] of Object.entries(INPUT_PREFIXES)) {
     if (!rest.startsWith(sym)) continue;
     const tail = rest.slice(sym.length).trim();
@@ -203,7 +223,7 @@ export function articleFor(displayed: string): 'a' | 'az' {
   return d === '5' ? 'az' : 'a';
 }
 
-/** Egységhez illő toldalék: "Ω-os", "V-os", "A-es", "W-os". */
+/** Egységhez illő toldalék: "Ω-os", "V-os", "A-es", "W-os", "F-os", "H-s". */
 export function unitSuffix(unit: Unit): string {
-  return unit === 'A' ? '-es' : '-os';
+  return unit === 'A' ? '-es' : unit === 'H' ? '-s' : '-os';
 }

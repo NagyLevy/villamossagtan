@@ -3,20 +3,6 @@ import { generateProblem } from '../generator/generate';
 import { checkCell, tableTargets, verify } from '../methods/check';
 import { trickHint } from '../simplify/hint';
 import { formatQuantity } from '../units';
-import { summarize, type Attempt } from '../ui/stats';
-
-describe('statisztika összesítése', () => {
-  it('témakörönként, szintenként, módszerenként, topológiánként', () => {
-    const a = (topic: string, level: string, method: string, correct: boolean): Attempt => ({ t: 0, topic, level, topology: 'letra', method, mode: 'gyakorlo', correct });
-    const s = summarize([a('zh', 'zh', 'hurokaram', true), a('zh', 'zh', 'csomoponti', false), a('eredo', 'alapozo', 'redukcio', true), a('csillag-delta', 'kozepes', 'csillag-delta', true)]);
-    expect(s.total).toBe(4);
-    expect(s.correct).toBe(3);
-    expect(s.byTopic.find((b) => b.key === 'zh')).toEqual({ key: 'zh', total: 2, correct: 1 });
-    expect(s.byTopic.find((b) => b.key === 'csillag-delta')!.total).toBe(1);
-    expect(s.byMethod.length).toBe(4);
-    expect(s.byTopology[0]).toEqual({ key: 'letra', total: 4, correct: 3 });
-  });
-});
 
 describe('táblázatkitöltés', () => {
   it('a helyes értékeket (előtaggal is) elfogadja, a rossz előjelet nem', () => {

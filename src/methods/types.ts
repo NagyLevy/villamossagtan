@@ -6,11 +6,16 @@ import type { Unit } from '../units';
 
 export type MethodId = 'redukcio' | 'kirchhoff' | 'hurokaram' | 'szuperpozicio' | 'thevenin' | 'csillag-delta' | 'csomoponti';
 
+/** Szinuszos és bekapcsolási feladatok saját (egyetlen) megoldásmenete. */
+export type AcMethodId = 'impedancia' | 'fazor' | 'teljesitmeny' | 'helyettesito' | 'rezonancia' | 'tranziens';
+
 export interface Quantity {
   /** A mennyiség jele LaTeX-ben, pl. "I_{R3}" vagy "R_{e1}". */
   symbol: string;
   value: number;
   unit: Unit;
+  /** Kész LaTeX-alak az értékhez (pl. komplex szám: "500 + j500\\,\\Omega"); ha van, ez jelenik meg. */
+  tex?: string;
 }
 
 export interface LoopRef {
@@ -107,7 +112,7 @@ export interface MethodAnswer {
 }
 
 export interface Solution {
-  method: MethodId;
+  method: MethodId | AcMethodId;
   title: string;
   steps: Step[];
   /** A módszer saját számolásával kapott válaszok a feladat kérdéseire. */

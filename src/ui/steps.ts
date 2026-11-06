@@ -14,6 +14,7 @@ function tex(src: string, display = false): string {
 
 /** Részeredmény KaTeX-ben: jel = érték előtaggal és mértékegységgel. */
 function resultTex(r: NonNullable<Step['result']>): string {
+  if (r.tex) return tex(`${r.symbol} = ${r.tex}`);
   // Előbb a tizedesvessző, aztán a szóköz: a `\,` vesszőjét már nem szabad átírni.
   const q = formatQuantity(r.value, r.unit)
     .replace(',', '{,}')

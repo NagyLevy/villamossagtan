@@ -56,7 +56,7 @@ export interface Question {
   loop?: { id: string; sign: 1 | -1 }[];
 }
 
-const NOUN = { R: 'ellenállás', V: 'feszültségforrás', I: 'áramforrás' } as const;
+const NOUN = { R: 'ellenállás', V: 'feszültségforrás', I: 'áramforrás', L: 'tekercs', C: 'kondenzátor', K: 'kapcsoló' } as const;
 
 export function valueLabel(el: CircuitElement): string {
   return formatQuantity(el.value, elementUnit(el.kind));
