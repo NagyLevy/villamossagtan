@@ -17,7 +17,7 @@ const day = (s: string) => {
 describe('napi feladatsor: menetrend', () => {
   it('egyenáramnál minden típusból egy, szinuszosnál minden témából egy', () => {
     const dc = dailyChallenge(day('2026-11-10'), 'kozepes', 'dc');
-    expect(dc.tasks.map((t) => t.dc!.method)).toEqual(['redukcio', 'redukcio', 'kirchhoff', 'hurokaram', 'csomoponti', 'szuperpozicio', 'thevenin']);
+    expect(dc.tasks.map((t) => t.dc!.method)).toEqual(['redukcio', 'redukcio', 'kirchhoff', 'hurokaram', 'csomoponti', 'szuperpozicio', 'thevenin', 'csillag-delta']);
     const ac = dailyChallenge(day('2026-11-10'), 'kozepes', 'ac');
     expect(ac.tasks.map((t) => t.ac!.topic)).toEqual(['ac-impedancia', 'ac-fazor', 'ac-teljesitmeny', 'ac-helyettesito', 'ac-rezonancia', 'tranziens']);
   });
@@ -58,7 +58,7 @@ describe('napi feladatsor: 10 nap × 4 nehézség, minden feladat megoldható a 
         }
       }
     }
-    expect(n).toBe(10 * 4 * 7);
+    expect(n).toBe(10 * 4 * 8);
   });
 
   it('szinuszos: minden napi feladat elkészül, van levezetése', () => {

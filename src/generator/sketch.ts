@@ -30,6 +30,8 @@ export class Sketch {
   private byPos = new Map<string, number>();
   terminals?: { a: number; b: number };
   ports?: { point: number; name: string }[];
+  /** Átívelő ág (a váz fölött vagy alatt), ha van. */
+  bypass?: Slot;
 
   pt(x: number, y: number): number {
     const key = `${x},${y}`;

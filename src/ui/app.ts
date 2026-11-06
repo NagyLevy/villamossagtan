@@ -124,9 +124,14 @@ export function startApp(root: HTMLElement): void {
   const practiceTask = (seed = randomSeed()): Task => {
     if (settings.domain === 'ac') return makeTask({ domain: 'ac', topic: settings.acTopic, level: settings.acLevel, seed });
     const level: Level = settings.dcTopic === 'zh' ? 'zh' : settings.dcLevel;
-    const found = findFor(settings.method, settings.dcTopic, level);
-    return dcTask(generateProblem({ seed: found ?? seed, topic: settings.dcTopic, level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode }));
+    // A Csillag-delta témakörben az átalakítás a módszer.
+    const method: MethodId = settings.dcTopic === 'csillag-delta' ? 'csillag-delta' : settings.method === 'csillag-delta' && !settings.starDelta ? 'redukcio' : settings.method;
+    const found = findFor(method, settings.dcTopic, level);
+    return dcTask(generateProblem({ seed: found ?? seed, topic: settings.dcTopic, level, starDelta: sdOn(settings.dcTopic), starDeltaMode: settings.starDeltaMode }));
   };
+
+  /** Csillag-delta: a beállítás szerint, a Csillag-delta témakörben mindig. */
+  const sdOn = (topic: Topic) => settings.starDelta || topic === 'csillag-delta';
 
   /** Seed, amivel a feladat az adott módszerrel a legkönnyebb (vagy legalább megoldható). */
   const findFor = (m: MethodId, topic: Topic, level: Level): string | null => {
@@ -134,7 +139,7 @@ export function startApp(root: HTMLElement): void {
       for (let i = 0; i < (relaxed ? 30 : 40); i++) {
         const s = randomSeed();
         try {
-          const p = generateProblem({ seed: s, topic, level, starDelta: settings.starDelta, starDeltaMode: settings.starDeltaMode });
+          const p = generateProblem({ seed: s, topic, level, starDelta: sdOn(topic), starDeltaMode: settings.starDeltaMode });
           if (methodFit(m, p, relaxed).ok) return s;
         } catch {
           // Ez a seed nem adott érvényes feladatot.
@@ -153,7 +158,7 @@ export function startApp(root: HTMLElement): void {
       toast(String(e instanceof Error ? e.message : e));
       return;
     }
-    viewer.load(practiceCurrent, { mode: 'practice', method: settings.method, allowNew: true });
+    viewer.load(practiceCurrent, { mode: 'practice', method: settings.dcTopic === 'csillag-delta' && settings.domain === 'dc' ? 'csillag-delta' : settings.method, allowNew: true });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
