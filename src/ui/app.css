@@ -3587,3 +3587,35 @@ h2.daily-title {
 .exam-table td:last-child {
   text-align: right;
 }
+
+/* Még nem elérhető (pl. váltóáram): szürke, nem kattintható, „Hamarosan” jelvénnyel. */
+.seg-btn.is-disabled {
+  cursor: not-allowed;
+}
+
+.seg-btn.is-disabled .seg-label {
+  opacity: 0.4;
+}
+
+.seg-btn.is-disabled:hover {
+  background: transparent;
+}
+
+.seg-btn.is-disabled:active {
+  transform: none;
+}
+
+.seg-btn .badge,
+.exam-name .badge {
+  margin-left: 6px;
+}
+
+.exam-card.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+.exam-card.is-disabled:hover {
+  background: var(--surface);
+}

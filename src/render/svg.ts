@@ -64,6 +64,12 @@ function arrowHead(tip: Pt, d: Pt, len: number, halfW: number): string {
 
 function resistorSvg(g: ElementGeom): string {
   const { body } = g;
+  if (g.orient === 'd') {
+    // Keresztbe (átlósan) kötött ellenállás: a vonallal együtt elforgatott téglalap.
+    const deg = (Math.atan2(g.axis.y, g.axis.x) * 180) / Math.PI;
+    const { center: c, halfLen: l, halfWidth: w } = g;
+    return `<rect class="sym" x="${f(c.x - l)}" y="${f(c.y - w)}" width="${f(2 * l)}" height="${f(2 * w)}" rx="1" transform="rotate(${f(deg)} ${f(c.x)} ${f(c.y)})"/>`;
+  }
   return `<rect class="sym" x="${f(body.x1)}" y="${f(body.y1)}" width="${f(body.x2 - body.x1)}" height="${f(body.y2 - body.y1)}" rx="1"/>`;
 }
 

@@ -165,6 +165,7 @@ export function gridCellsOf(sketch: Sketch): (s: Slot) => string[] {
   return (s) => {
     // Az átívelő ág saját ablakot zár (a váz széle és közte).
     if (s === sketch.bypass) return ['ativelo'];
+    if (s === sketch.diagonal) return [`atlos`];
     const a = pos.get(s.branch.from)!;
     const b = pos.get(s.branch.to)!;
     const out: string[] = [];
@@ -212,6 +213,35 @@ export function randomBypass(s: Sketch, rng: Rng): Slot {
   return addBypass(s, rng.chance(0.55) ? 'top' : 'bottom', a, b);
 }
 
+/**
+ * Keresztbe (átlósan) kötött ellenállás egy teljes rácscellában, az egyik sarokból a szemközti
+ * sarokba. A cellát két háromszögre vágja, így egy új hurok keletkezik. null, ha nincs ép cella.
+ */
+export function addDiagonal(s: Sketch, rng: Rng): Slot | null {
+  const at = new Set(s.points.map((p) => `${p.x},${p.y}`));
+  const pos = new Map(s.points.map((p) => [p.id, p]));
+  const edges = new Set(
+    s.branches.map((b) => {
+      const a = pos.get(b.from)!;
+      const c = pos.get(b.to)!;
+      return `${a.x},${a.y}-${c.x},${c.y}`;
+    }),
+  );
+  const has = (x1: number, y1: number, x2: number, y2: number) => edges.has(`${x1},${y1}-${x2},${y2}`);
+  const cells: { x: number; y: number }[] = [];
+  for (const p of s.points) {
+    const { x, y } = p;
+    if (!at.has(`${x + S},${y}`) || !at.has(`${x},${y + S}`) || !at.has(`${x + S},${y + S}`)) continue;
+    // Ép cella: mind a négy oldala egy-egy ág (nincs kivéve belőle semmi).
+    if (has(x, y, x + S, y) && has(x, y + S, x + S, y + S) && has(x, y, x, y + S) && has(x + S, y, x + S, y + S)) cells.push({ x, y });
+  }
+  if (!cells.length) return null;
+  const c = rng.pick(cells);
+  const slot = rng.chance(0.5) ? s.slot(c.x, c.y, c.x + S, c.y + S, 'diag', true, 1) : s.slot(c.x, c.y + S, c.x + S, c.y, 'diag', true, 1);
+  s.diagonal = slot;
+  return slot;
+}
+
 /** Lehetséges hurokszámok topológiánként (a generátor ebből választ). */
 export function meshOptions(t: Topology): number[] {
   switch (t) {
@@ -231,7 +261,13 @@ export function meshOptions(t: Topology): number[] {
  * A sablon váza adott hurokszámra (a soros-párhuzamosat a generátor külön építi). `bypass` esetén
  * egy hurokkal kisebb váz készül, és fölé vagy alá egy átívelő ág kerül.
  */
-export function skeletonFor(t: Topology, meshes: number, rng: Rng, bypass = false): Sketch | null {
+export function skeletonFor(t: Topology, meshes: number, rng: Rng, bypass = false, diagonal = false): Sketch | null {
+  // Keresztbe kötött ellenállás: egy hurokkal kisebb vázból, egy ép cellába.
+  if (diagonal && t !== 'hid' && meshes >= 3) {
+    const base = skeletonFor(t, meshes - 1, rng, bypass && meshes >= 4);
+    if (!base || !addDiagonal(base, rng)) return null;
+    return base;
+  }
   if (bypass && t !== 'hid' && meshes >= 3) {
     const base = t === 'racs' ? (meshes - 1 >= 4 && (meshes - 1) % 2 === 0 ? grid(2, (meshes - 1) / 2) : grid(1, meshes - 1)) : skeletonFor(t, meshes - 1, rng);
     if (!base) return null;

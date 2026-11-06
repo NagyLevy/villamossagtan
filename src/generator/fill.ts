@@ -28,6 +28,7 @@ const DEFAULT_R_WEIGHT: Record<SlotRole, number> = {
   bridge: 3,
   feed: 1,
   shunt: 3,
+  diag: 4,
 };
 
 /** Egy forráscsoport: egy forrás (és esetleg egy vele soros ellenállás). Két forrás sosem kerül sorba. */

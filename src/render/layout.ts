@@ -63,7 +63,8 @@ export interface ElementGeom {
   el: CircuitElement;
   branchId: string;
   center: Pt;
-  orient: 'h' | 'v';
+  /** Vízszintes, függőleges vagy átlós (keresztbe kötött) ág. */
+  orient: 'h' | 'v' | 'd';
   /** Az ág from→to iránya egységvektorként (jobbra vagy lefelé). */
   axis: Pt;
   /** Fél hossz a vezeték mentén és fél szélesség rá merőlegesen. */
@@ -127,6 +128,18 @@ export function elementLabelText(el: CircuitElement): string {
 
 export function boxesOverlap(a: Box, b: Box, pad = 0): boolean {
   return a.x1 < b.x2 + pad && b.x1 < a.x2 + pad && a.y1 < b.y2 + pad && b.y1 < a.y2 + pad;
+}
+
+/** Átlós vezetékszakasz akadályként: kis dobozok sora a vonal mentén (nem egy nagy téglalap). */
+function segBoxes(s: WireSeg): Box[] {
+  if (s.a.x === s.b.x || s.a.y === s.b.y) return [segBox(s)];
+  const len = Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y);
+  const n = Math.max(1, Math.ceil(len / 8));
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const x = s.a.x + ((s.b.x - s.a.x) * i) / n;
+    const y = s.a.y + ((s.b.y - s.a.y) * i) / n;
+    return { x1: x - 3, y1: y - 3, x2: x + 3, y2: y + 3 };
+  });
 }
 
 function segBox(s: WireSeg, pad = 1): Box {
@@ -218,9 +231,9 @@ export function computeLayout(c: Circuit): Layout {
   for (const br of c.branches) {
     const p = px.get(br.from)!;
     const q = px.get(br.to)!;
-    const orient = p.y === q.y ? 'h' : 'v';
-    const axis = orient === 'h' ? { x: 1, y: 0 } : { x: 0, y: 1 };
-    const len = orient === 'h' ? q.x - p.x : q.y - p.y;
+    const orient = p.y === q.y ? 'h' : p.x === q.x ? 'v' : 'd';
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    const axis = { x: (q.x - p.x) / len, y: (q.y - p.y) / len };
     const k = br.elements.length;
     let cursor = p;
     br.elements.forEach((el, i) => {
@@ -233,8 +246,9 @@ export function computeLayout(c: Circuit): Layout {
       const end = { x: center.x + axis.x * halfLen, y: center.y + axis.y * halfLen };
       wires.push({ a: cursor, b: start, branchId: br.id });
       cursor = end;
-      const hx = orient === 'h' ? halfLen : halfWidth;
-      const hy = orient === 'h' ? halfWidth : halfLen;
+      // Átlós elemnél a befoglaló téglalap az elforgatott jel sarkaiból adódik.
+      const hx = orient === 'h' ? halfLen : orient === 'v' ? halfWidth : Math.abs(axis.x) * halfLen + Math.abs(axis.y) * halfWidth;
+      const hy = orient === 'h' ? halfWidth : orient === 'v' ? halfLen : Math.abs(axis.y) * halfLen + Math.abs(axis.x) * halfWidth;
       pending.push({ el, branchId: br.id, center, orient, axis, halfLen, halfWidth, body: { x1: center.x - hx, y1: center.y - hy, x2: center.x + hx, y2: center.y + hy } });
     });
     wires.push({ a: cursor, b: q, branchId: br.id });
@@ -251,7 +265,7 @@ export function computeLayout(c: Circuit): Layout {
 
   // 3. Feliratok és nyilak: a kedvelt oldal a külső perem felé néz; ütközésnél a másik oldal.
   const obstacles: Box[] = [
-    ...wires.map((w) => segBox(w)),
+    ...wires.flatMap((w) => segBoxes(w)),
     ...pending.map((g) => g.body),
     ...junctions.map((j) => ({ x1: j.x - 5, y1: j.y - 5, x2: j.x + 5, y2: j.y + 5 })),
   ];
@@ -261,10 +275,11 @@ export function computeLayout(c: Circuit): Layout {
   for (const g of pending) {
     const text = elementLabelText(g.el);
     const preferred: Side =
-      g.orient === 'h' ? (g.center.y >= bounds.y2 ? 'below' : 'above') : g.center.x <= bounds.x1 ? 'left' : 'right';
+      g.orient === 'h' ? (g.center.y >= bounds.y2 ? 'below' : 'above') : g.orient === 'v' ? (g.center.x <= bounds.x1 ? 'left' : 'right') : 'right';
     // Jelöltek: a felirat a kedvelt / ellentétes oldalon, a forrásnyíl a másikon; ha egyik sem fér el,
     // a nyíl és a felirat ugyanarra az oldalra kerül (a nyíl közelebb, a felirat a nyílon túl).
     const isSource = g.el.kind === 'V' || g.el.kind === 'I';
+    let chosen: { label: LabelGeom; arrow?: ElementGeom['arrow'] } | null = null;
     const candidates: { side: Side; arrowSide: Side; clearance: number }[] = [
       { side: preferred, arrowSide: OPPOSITE[preferred], clearance: g.halfWidth },
       { side: OPPOSITE[preferred], arrowSide: preferred, clearance: g.halfWidth },
@@ -273,8 +288,21 @@ export function computeLayout(c: Circuit): Layout {
       const beyondArrow = SIZE.arrowOffset + 4;
       candidates.push({ side: preferred, arrowSide: preferred, clearance: beyondArrow }, { side: OPPOSITE[preferred], arrowSide: OPPOSITE[preferred], clearance: beyondArrow });
     }
-    let chosen: { label: LabelGeom; arrow?: ElementGeom['arrow'] } | null = null;
-    for (const cand of candidates) {
+    // Átlós elemnél a felirat az elem mellé kerül, a vonalra merőlegesen eltolva (jobbra vagy balra).
+    if (g.orient === 'd') {
+      const n = { x: -g.axis.y, y: g.axis.x };
+      for (const sgn of [1, -1]) {
+        const off = g.halfWidth + 10;
+        const at = { x: g.center.x + n.x * off * sgn, y: g.center.y + n.y * off * sgn };
+        const side: Side = n.x * sgn >= 0 ? 'right' : 'left';
+        const label = labelAt(text, at, side, 0);
+        if (!obstacles.some((o) => o !== g.body && boxesOverlap(label.box, o)) && !placed.some((o) => boxesOverlap(label.box, o, 2))) {
+          chosen = { label };
+          break;
+        }
+      }
+    }
+    for (const cand of chosen ? [] : candidates) {
       const label = labelAt(text, g.center, cand.side, cand.clearance);
       const arrow = isSource ? arrowFor(g, cand.arrowSide) : undefined;
       const mine = [label.box, ...(arrow ? [arrow.box] : [])];

@@ -12,7 +12,8 @@ export type SlotRole =
   | 'arm' // híd karja
   | 'bridge' // híd átlója
   | 'feed' // hídat tápláló ág
-  | 'shunt'; // a forrással párhuzamos ág
+  | 'shunt' // a forrással párhuzamos ág
+  | 'diag'; // keresztbe (átlósan) kötött ellenállás egy cellában
 
 export interface Slot {
   branch: Branch;
@@ -32,6 +33,8 @@ export class Sketch {
   ports?: { point: number; name: string }[];
   /** Átívelő ág (a váz fölött vagy alatt), ha van. */
   bypass?: Slot;
+  /** Keresztbe (átlósan) kötött ág, ha van. */
+  diagonal?: Slot;
 
   pt(x: number, y: number): number {
     const key = `${x},${y}`;
@@ -47,11 +50,13 @@ export class Sketch {
   /**
    * Egyenes ág két rácspont között. Az elemeket (x1,y1)→(x2,y2) sorrendben kell megadni;
    * a tárolt ág mindig balról jobbra / fentről lefelé mutat, ehhez szükség esetén megfordítjuk.
+   * Átlós (45°-os, keresztbe kötött) ág is lehet; az mindig balról jobbra mutat.
    */
   branch(x1: number, y1: number, x2: number, y2: number, elements: CircuitElement[] = []): Branch {
-    if (x1 !== x2 && y1 !== y2) throw new Error('Csak vízszintes vagy függőleges ág lehet');
+    const diagonal = x1 !== x2 && y1 !== y2;
+    if (diagonal && Math.abs(x2 - x1) !== Math.abs(y2 - y1)) throw new Error('Csak vízszintes, függőleges vagy 45°-os ág lehet');
     let els = elements;
-    if (x1 > x2 || y1 > y2) {
+    if (diagonal ? x1 > x2 : x1 > x2 || y1 > y2) {
       [x1, y1, x2, y2] = [x2, y2, x1, y1];
       els = reverseElements(els);
     }
