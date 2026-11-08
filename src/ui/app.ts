@@ -183,12 +183,14 @@ export function startApp(root: HTMLElement): void {
   const pickMethod = (m: MethodId) => {
     update({ method: m });
     const t = viewer.current;
-    if (t?.dc && applicableMethods(t.dc).includes(m)) {
+    // A tanár úr témakörében minden módszerhez a saját feladattípusa tartozik.
+    const teacherMismatch = t?.dc?.topic === 'tanari' && t.dc.teacherType !== m;
+    if (t?.dc && !teacherMismatch && applicableMethods(t.dc).includes(m)) {
       viewer.setMethod(m);
       return;
     }
     if (settings.mode !== 'gyakorlas') return viewer.setMethod(m);
-    toast('Ehhez a feladathoz ez a módszer nem alkalmazható: hoztam egy hozzáillőt.');
+    toast(teacherMismatch ? 'Hoztam a tanár úr ehhez a módszerhez tartozó feladattípusát.' : 'Ehhez a feladathoz ez a módszer nem alkalmazható: hoztam egy hozzáillőt.');
     newPractice();
   };
 

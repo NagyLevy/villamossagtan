@@ -100,6 +100,12 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   részfeszültség iránya (A→B) vagy (B→A), a végén előjeles összeg; csomóponti módszer csak, ha egy
   részáramkör nem bontható. In = Uü / Rg (nincs külön rövidzárási számolás). Illesztés: Rt = Rg,
   Pmax = Uü² / (4 Rg). A Thevenin-témakörben a „Szuperpozíció” módszer is ezt a menetet adja.
+- **„A tanár úr feladattípusai” témakör** (`tanari`, `teacherDraft` a `generate.ts`-ben, `teacherType`):
+  a füzet négy típusa, módszerenként egy — szuperpozíció (2 feszültség- + 1 áramforrás, forrásonkénti
+  részáramok osztókkal + összeg), helyettesítő generátor (≥ 2 forrás, Rg, Uü, In, IL, Pmax),
+  hurokáram (áramforrás(ok) ismert hurokkal, ágáram + az áramforrás feszültsége), csomóponti
+  potenciál (4 csomópont). Ebben a témakörben a módszerfül mindig a saját típusát hozza
+  (`fit.ts`, `app.ts` `pickMethod`). Teszt: `src/tests/teacher.test.ts`.
 
 ### Módszerfülek és feladatok
 - Szabad gyakorlásnál minden módszerfül (és az „Új feladat” gomb) olyan feladatot hoz, amit

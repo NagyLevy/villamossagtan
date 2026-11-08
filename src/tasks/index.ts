@@ -75,6 +75,7 @@ export const DC_TOPICS: TopicInfo[] = [
   { id: 'valodi-gen', name: TOPIC_NAMES['valodi-gen'], hint: 'belső ellenállás, terhelés' },
   { id: 'thevenin', name: TOPIC_NAMES.thevenin, hint: 'helyettesítő generátor' },
   { id: 'tobbforras', name: TOPIC_NAMES.tobbforras, hint: 'hurokáram, csomóponti, szuperpozíció' },
+  { id: 'tanari', name: TOPIC_NAMES.tanari, hint: 'a gyakorlati füzet típusai: szuperpozíció, Thevenin/Norton, csomóponti, hurokáram' },
   { id: 'csillag-delta', name: TOPIC_NAMES['csillag-delta'], hint: 'Δ ↔ Y átalakítás, hidas hálózatok' },
   { id: 'zh', name: TOPIC_NAMES.zh, hint: 'nagy hálózat, ZH-méret' },
 ];

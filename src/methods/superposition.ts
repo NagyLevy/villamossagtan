@@ -26,7 +26,7 @@ export function solveSuperposition(p: Problem): MethodResult {
   if (sources.length < 2) return { ok: false, reason: 'Szuperpozícióhoz legalább két forrás kell.' };
   // Helyettesítő generátoros feladat (a tanár úr füzete szerint): az A–B kapcsok üresjárási feszültsége
   // forrásonként osztókkal, (A→B) / (B→A) iránnyal, majd előjeles összeg; Rg a források kiiktatásával.
-  if (p.topic === 'thevenin' && p.questions.some((q) => q.kind === 'Uth')) {
+  if ((p.topic === 'thevenin' || p.teacherType === 'thevenin') && p.questions.some((q) => q.kind === 'Uth')) {
     const r = solveThevenin(p);
     if (!r.ok) return r;
     if (!r.solution.steps.some((s) => s.group === 'Uü: összegzés'))

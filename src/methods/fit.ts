@@ -21,6 +21,13 @@ export interface Fit {
   why: string;
 }
 
+const TEACHER_WHY: Partial<Record<MethodId, string>> = {
+  szuperpozicio: 'Gyakorlati feladat: forrásonként egy részáramkör, eredővel és osztókkal, a végén előjeles összeg.',
+  thevenin: 'Gyakorlati feladat: Rg üresjárásban, Uü forrásonként osztókkal, In = Uü / Rg, Pmax illesztésnél.',
+  hurokaram: 'Gyakorlati feladat: minden áramforrásnak saját ismert hurka van, a többi hurokáram ismeretlen.',
+  csomoponti: 'Gyakorlati feladat: négy csomópont, n − 1 − nᵤ ismeretlen potenciál, kifolyó áramok összege = 0.',
+};
+
 const eq = (n: number) => (n === 0 ? 'egyenletrendszer nélkül' : `${n} egyenlet`);
 
 /**
@@ -31,6 +38,8 @@ export function methodFit(m: MethodId, p: Problem, relaxed = false): Fit {
   const usable = applicableMethods(p);
   if (!usable.includes(m)) return { ok: false, why: '' };
   const sources = p.stats.sources;
+  // A tanár úr feladattípusai: mindegyik a saját módszeréhez való.
+  if (p.topic === 'tanari') return { ok: p.teacherType === m, why: TEACHER_WHY[m] ?? '' };
   switch (m) {
     case 'redukcio':
       return { ok: sources <= 1, why: sources === 0 ? 'Soros-párhuzamos hálózat: elég lépésenként összevonni.' : 'Egy forrás, soros-párhuzamos hálózat: elég összevonni és osztani.' };

@@ -29,7 +29,11 @@ import { meshes } from '../methods/engine';
 import { circuitIssues, seriesSourcePairs } from './validate';
 import { pickI, pickOhmR, pickR, pickV, POWER_RATINGS, type Level } from './values';
 
-export type Topic = 'ohm' | 'eredo' | 'kirchhoff' | 'oszto' | 'halozat' | 'valodi-gen' | 'thevenin' | 'tobbforras' | 'csillag-delta' | 'zh';
+export type Topic = 'ohm' | 'eredo' | 'kirchhoff' | 'oszto' | 'halozat' | 'valodi-gen' | 'thevenin' | 'tobbforras' | 'tanari' | 'csillag-delta' | 'zh';
+
+/** A tanár úr füzetének (gyakorlati megoldásainak) feladattípusai, módszerenként. */
+export type TeacherType = 'szuperpozicio' | 'thevenin' | 'hurokaram' | 'csomoponti';
+export const TEACHER_TYPES: TeacherType[] = ['szuperpozicio', 'thevenin', 'hurokaram', 'csomoponti'];
 
 export const TOPIC_NAMES: Record<Topic, string> = {
   ohm: 'Ohm és teljesítmény',
@@ -40,6 +44,7 @@ export const TOPIC_NAMES: Record<Topic, string> = {
   'valodi-gen': 'Valódi generátor terhelése',
   thevenin: 'Thevenin és Norton',
   tobbforras: 'Többforrásos hálózatok',
+  tanari: 'A tanár úr feladattípusai',
   'csillag-delta': 'Csillag-delta',
   zh: 'ZH-feladat',
 };
@@ -62,6 +67,10 @@ export interface GenerateOptions {
   /** Addig próbálkozik, amíg a keresett mennyiség szép (kerek) szám. */
   roundResults?: boolean;
   zhType?: ZhType | 'veletlen';
+  /** A tanár úr feladattípusa (csak a 'tanari' témakörben); alapból véletlen. */
+  teacherType?: TeacherType | 'veletlen';
+  /** Pontos forrásmegoszlás (feszültség- és áramforrások száma). */
+  sourceSplit?: { nV: number; nI: number };
 }
 
 export interface Problem {
@@ -77,12 +86,15 @@ export interface Problem {
   attempts: number;
   /** Csillag-delta bekapcsolva készült (a megoldás használhat átalakítást, pl. szuperpozíció részáramkörében). */
   starDelta?: boolean;
+  /** A tanár úr feladattípusa ('tanari' témakör). */
+  teacherType?: TeacherType;
 }
 
 interface Draft {
   circuit: Circuit;
   topology: Topology | 'egyedi';
   zhType?: ZhType;
+  teacherType?: TeacherType;
   /** A kérdéseket a kész (azonosítókkal ellátott) áramkörből és a megoldásból állítjuk elő. */
   ask: (ctx: Ctx) => Question[] | null;
 }
@@ -103,7 +115,7 @@ const EPS = 1e-9;
 export function generateProblem(options: GenerateOptions): Problem {
   const topic = options.topic;
   const level: Level = topic === 'zh' ? 'zh' : options.level ?? 'alapozo';
-  const rng = new Rng(`${options.seed}|${topic}|${level}|${options.topology ?? ''}|${options.sourceCount ?? ''}|${options.sourceMix ?? ''}|${options.zhType ?? ''}|0`);
+  const rng = new Rng(`${options.seed}|${topic}|${level}|${options.topology ?? ''}|${options.sourceCount ?? ''}|${options.sourceMix ?? ''}|${options.zhType ?? ''}${options.teacherType && options.teacherType !== 'veletlen' ? `|${options.teacherType}` : ''}|0`);
   const starDelta = options.starDelta ?? false;
   // Csillag-delta bekapcsolva: ugyanaz a feladat készül (ugyanaz a seed), és utána kerül bele egy új
   // ellenállás, ami miatt átalakítás kell. Ezekben a témakörökben az alapfeladat maga nem hidas.
@@ -149,6 +161,7 @@ export function generateProblem(options: GenerateOptions): Problem {
       level,
       topology: draft.topology,
       zhType: draft.zhType,
+      teacherType: draft.teacherType,
       circuit,
       questions,
       stats: { meshes: meshCount(map.net), resistors: els.filter((e) => e.kind === 'R').length, sources: els.filter((e) => e.kind !== 'R').length },
@@ -181,6 +194,8 @@ function buildDraft(topic: Topic, level: Level, o: GenerateOptions, rng: Rng): D
       return theveninDraft(level, o, rng);
     case 'tobbforras':
       return level === 'zh' ? zhDraft(o, rng) : multiDraft(level, o, rng);
+    case 'tanari':
+      return teacherDraft(level, o, rng);
     case 'csillag-delta':
       return starDeltaDraft(level, o, rng);
     case 'zh':
@@ -479,7 +494,7 @@ function buildMulti(level: Level, o: GenerateOptions, rng: Rng, minSources = 1):
   const sk = skeletonFor(pick.t, pick.m, rng, rng.chance(0.25), rng.chance(0.4));
   if (!sk) return null;
   const total = Math.max(minSources, o.sourceCount ?? rng.int(z.sources[0], z.sources[1]));
-  const { nV, nI } = splitSources(total, o.sourceMix ?? 'vegyes', rng);
+  const { nV, nI } = o.sourceSplit ?? splitSources(total, o.sourceMix ?? 'vegyes', rng);
   const nR = rng.int(z.R[0], z.R[1]);
   const lvl = sizeLevel(level);
   const spec: FillSpec = {
@@ -583,6 +598,117 @@ function hardQuestionSet(ctx: Ctx, target: CircuitElement): Question[] | null {
     source: s.id,
   });
   return qs;
+}
+
+// ───────────────────────────── a tanár úr feladattípusai ─────────────────────────────
+
+/**
+ * A gyakorlaton (a tanár úr füzetében) megoldott feladatok típusai:
+ *  - szuperpozíció: két feszültség- és egy áramforrás, egy ellenállás árama forrásonként és összesen,
+ *    minden részáramkör eredővel és osztókkal megoldható;
+ *  - helyettesítő generátor: legalább két forrás, Rg, Uü, In, terhelőáram és Pmax (illesztés);
+ *  - hurokáram: áramforrás(ok) saját, ismert hurokkal, egy ágáram és az áramforrás feszültsége;
+ *  - csomóponti potenciál: négy csomópont (három ismeretlen potenciál), két ellenállás árama.
+ * A feladat mérete legalább közepes (a gyakorlati feladatok ilyenek).
+ */
+function teacherDraft(level: Level, o: GenerateOptions, rng: Rng): Draft | null {
+  const type: TeacherType = o.teacherType && o.teacherType !== 'veletlen' ? o.teacherType : rng.pick(TEACHER_TYPES);
+  const lvl: Level = sizeLevel(level) === 'nehez' ? 'nehez' : 'kozepes';
+  const tag = (d: Draft | null): Draft | null => (d ? { ...d, teacherType: type } : null);
+  switch (type) {
+    case 'thevenin': {
+      const d = theveninDraft(lvl, { ...o, sourceCount: 2 }, rng);
+      if (!d) return null;
+      return tag({
+        ...d,
+        ask: (ctx) => {
+          if (allElements(ctx.circuit).filter((e) => e.kind !== 'R').length < 2) return null;
+          return d.ask(ctx);
+        },
+      });
+    }
+    case 'szuperpozicio': {
+      const built = buildMulti('nehez', { ...o, sourceSplit: { nV: 2, nI: 1 } }, rng, 3);
+      if (!built) return null;
+      return tag({
+        circuit: built.circuit,
+        topology: built.topology,
+        ask: (ctx) => {
+          const { circuit, map, sol, rng } = ctx;
+          const sources = map.net.elements.filter((e) => e.kind !== 'R');
+          if (sources.length !== 3) return null;
+          // Minden részáramkör eredővel és osztókkal (a szuperpozíciót így tanuljuk).
+          if (!sources.every((x) => singleSourceSteps(killSources(map.net, [x.id]).net, [], {}) !== null)) return null;
+          const rs = interestingResistors(ctx);
+          if (rs.length === 0) return null;
+          const target = rng.pick(rs);
+          const qs: Question[] = [];
+          for (const s of sources) {
+            const part = contribution(map.net, s.id);
+            const Ipart = part?.elements.get(target.id)?.I;
+            if (Ipart === undefined || Math.abs(Ipart) < EPS) return null;
+            qs.push({
+              id: questionId(),
+              kind: 'Isup',
+              text: `Szuperpozícióval: mekkora áramot hoz létre ${elementName(circuit, allElements(circuit).find((e) => e.id === s.id)!)} egyedül (a többi forrás kiiktatva) ${elementName(circuit, target, 'on')}, a referenciairány szerint, előjelesen?`,
+              unit: 'A',
+              answer: Ipart,
+              magnitudeOnly: false,
+              target: target.id,
+              source: s.id,
+            });
+          }
+          qs.push(askElementI(circuit, target, sol.elements.get(target.id)!.I, false));
+          return qs;
+        },
+      });
+    }
+    case 'hurokaram': {
+      const split = lvl === 'nehez' ? { nV: 1, nI: 2 } : { nV: 1, nI: 1 };
+      const built = buildMulti(lvl, { ...o, sourceSplit: split }, rng, split.nV + split.nI);
+      if (!built) return null;
+      return tag({
+        circuit: built.circuit,
+        topology: built.topology,
+        ask: (ctx) => {
+          const { circuit, sol, rng } = ctx;
+          const isrc = allElements(circuit).filter((e) => e.kind === 'I');
+          if (isrc.length !== split.nI) return null;
+          const rs = interestingResistors(ctx);
+          if (rs.length === 0) return null;
+          const target = rng.pick(rs);
+          const s = rng.pick(isrc);
+          const Us = sol.elements.get(s.id)!.U;
+          if (Math.abs(Us) < EPS) return null;
+          const qU = askElementU(circuit, s, Us, true);
+          qU.text = `Mekkora feszültség van ${elementName(circuit, s, 'on')}? (A huroktörvényből, a nagyságát adja meg.)`;
+          return [askElementI(circuit, target, sol.elements.get(target.id)!.I, true), qU];
+        },
+      });
+    }
+    case 'csomoponti': {
+      const built = buildMulti(lvl, { ...o, sourceSplit: { nV: 1, nI: 1 } }, rng, 2);
+      if (!built) return null;
+      return tag({
+        circuit: built.circuit,
+        topology: built.topology,
+        ask: (ctx) => {
+          const { circuit, map, sol, rng } = ctx;
+          // Négy csomópont (ahol legalább három ág találkozik): három ismeretlen potenciál.
+          const degree = new Array<number>(map.net.nodeCount).fill(0);
+          for (const e of map.net.elements) {
+            degree[e.a]!++;
+            degree[e.b]!++;
+          }
+          if (degree.filter((d) => d >= 3).length !== 4) return null;
+          const rs = interestingResistors(ctx);
+          if (rs.length < 2) return null;
+          const [r1, r2] = rng.shuffle([...rs]) as [CircuitElement, CircuitElement];
+          return [askElementI(circuit, r1, sol.elements.get(r1.id)!.I, true), askElementU(circuit, r2, sol.elements.get(r2.id)!.U, true)];
+        },
+      });
+    }
+  }
 }
 
 function withoutElement(map: NetlistMapping, id: string) {
