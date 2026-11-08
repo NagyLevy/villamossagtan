@@ -595,13 +595,13 @@ function theveninQuestions(c: Circuit, load: CircuitElement, th: { Uth: number; 
     {
       id: questionId(),
       kind: 'Uth',
-      text: `${capitalize(name)} kapcsaira (A–B) határozza meg a Thevenin-helyettesítő generátor forrásfeszültségét, Uth = φA − φB!`,
+      text: `${capitalize(name)} kapcsaira (A–B) határozza meg a helyettesítő generátor üresjárási feszültségét, Uü = φA − φB!`,
       unit: 'V',
       answer: th.Uth,
       magnitudeOnly: false,
       target: load.id,
     },
-    { id: questionId(), kind: 'Rth', text: 'Mekkora a helyettesítő generátor belső ellenállása (Rth)?', unit: 'Ω', answer: th.Rth, magnitudeOnly: true, target: load.id },
+    { id: questionId(), kind: 'Rth', text: 'Mekkora a helyettesítő generátor belső ellenállása (Rg)?', unit: 'Ω', answer: th.Rth, magnitudeOnly: true, target: load.id },
     {
       id: questionId(),
       kind: 'In',
@@ -618,6 +618,15 @@ function theveninQuestions(c: Circuit, load: CircuitElement, th: { Uth: number; 
       unit: 'A',
       answer: IL,
       magnitudeOnly: false,
+      target: load.id,
+    },
+    {
+      id: questionId(),
+      kind: 'Pmax',
+      text: 'Mekkora terhelő ellenállással (Rt) vehető ki a generátorból a legnagyobb teljesítmény, és mekkora ez a Pmax?',
+      unit: 'W',
+      answer: (th.Uth * th.Uth) / (4 * th.Rth),
+      magnitudeOnly: true,
       target: load.id,
     },
   ];

@@ -85,6 +85,22 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   (`src/daily/problem.ts`, teszt ellenőrzi).
 - A φ jel a csomóponti potenciál (V), csak a csomóponti módszerben szerepel.
 
+### A tanár úr (Dr. Lilik Ferenc) megoldásmenete — a levezetések ehhez igazodnak
+- **Hurokáram** (`loopcurrent.ts`): először l = b − n + 1 (ágak, csomópontok). Hurokáramok neve
+  J₁, J₂ …, óramutató szerint. **Minden áramforrásnak saját, ismert hurka van** (a hurokáram a
+  forrás árama, a rajzon „5 A” felirattal); **nincs szuperhurok**. Minden ellenállást és
+  feszültségforrást érintenie kell egy ismeretlen huroknak. Tagok: R·(saját J előre, a többi után,
+  ismert hurok számmal), pl. R₃(J₂ − 5); „= 0” alak, utána rendezés.
+- **Csomóponti potenciál** (`nodal.ts`): ismeretlenek száma n − 1 − nᵤ (nᵤ: feszültségforrással
+  rögzített csomópontok). Egyenlet: „kifolyó áramok összege = 0”, törtekkel, a számok beírva, a
+  referencia φ-je nem szerepel (φ₁/4, nem (φ₁ − φ₀)/4); utána beszorzás a nevezők legkisebb közös
+  többszörösével, hogy egész együtthatók legyenek.
+- **Helyettesítő generátor** (`thevenin.ts`): jelölés Rg, Uü, In (nem Rth, Uth). Rg = R_AB a források
+  kiiktatásával, **mindig üresjárásban**. Uü forrásonként (szuperpozíció) eredővel és osztókkal, a
+  részfeszültség iránya (A→B) vagy (B→A), a végén előjeles összeg; csomóponti módszer csak, ha egy
+  részáramkör nem bontható. In = Uü / Rg (nincs külön rövidzárási számolás). Illesztés: Rt = Rg,
+  Pmax = Uü² / (4 Rg). A Thevenin-témakörben a „Szuperpozíció” módszer is ezt a menetet adja.
+
 ### Módszerfülek és feladatok
 - Szabad gyakorlásnál minden módszerfül (és az „Új feladat” gomb) olyan feladatot hoz, amit
   **azzal a módszerrel a legkönnyebb** megoldani (`src/methods/fit.ts`); a feladat címe alatt ki is

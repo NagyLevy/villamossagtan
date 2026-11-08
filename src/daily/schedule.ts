@@ -83,7 +83,7 @@ const TIPS: Record<string, string> = {
   hurokaram: 'Ablakonként egy hurokáram, mind ugyanabba az irányba. Közös ágban a két hurokáram különbsége folyik. Áramforrásnál kötött hurok vagy szuperhurok.',
   csomoponti: 'Válassz referenciát (0 V), a feszültségforrással rögzített csomópontokat írd fel előre. Minden ismeretlen csomópontra: kifolyó áramok összege nulla.',
   csillagdelta: 'Delta → csillag: R1 = R12·R13 / (R12 + R23 + R31), a két szomszédos delta-ellenállás szorzata per a három összege. Csillag → delta: R12 = R1 + R2 + R1·R2/R3. Átalakítás után már soros-párhuzamosan összevonható.',
-  thevenin: 'Rth: források kiiktatva, A–B felől az eredő. Uth: üresjárás. In: rövidzár. Ellenőrzés: Uth = Rth · In.',
+  thevenin: 'Rg: források kiiktatva, A–B felől az eredő (mindig üresjárásban). Uü: forrásonként osztókkal, (A→B) / (B→A) iránnyal, majd előjeles összeg. In = Uü / Rg. Illesztésnél Rt = Rg, Pmax = Uü² / (4 Rg).',
   impedancia: 'Előbb minden tekercs és kondenzátor impedanciáját írd fel (jωL, −j/(ωC)), aztán ugyanúgy vonj össze, mint ellenállásokkal, csak komplex számokkal.',
   fazor: 'Osztóknál a komplex számok arányával szorozz. Szorzásnál az abszolút értékek szorzódnak, a szögek összeadódnak; osztásnál a szögek kivonódnak.',
   teljesitmeny: 'Komplex csúcsértékekkel S = ½·Û·Î*. P a valós, Q a képzetes rész. A cos φ az eredő impedancia szögéből jön.',
@@ -101,7 +101,7 @@ const STUDY_TIPS_DC = [
   'Hurokáramnál a közös ágban folyó áram a két hurokáram különbsége. A végén mindig ágáramot számolj belőlük.',
   'Osztó: U_x = U · R_x / ΣR soros ágban; két párhuzamos ágnál I_1 = I · R_2 / (R_1 + R_2).',
   'Csomóponti módszernél az ismeretlenek száma: csomópontok − feszültségforrással rögzítettek − 1. Ezzel kezdd!',
-  'Thevenin: ha az Rth-nál maradt áramforrás, az szakadás, vagyis az az ág kiesik az eredőből.',
+  'Thevenin: ha az Rg-nél maradt áramforrás, az szakadás, vagyis az az ág kiesik az eredőből.',
   'Időre gyakorolj: nézd meg, melyik lépésnél lassulsz le, és azt gyakorold külön.',
 ];
 

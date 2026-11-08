@@ -41,6 +41,11 @@ export function methodFit(m: MethodId, p: Problem, relaxed = false): Fit {
     case 'csillag-delta':
       return { ok: !usable.includes('redukcio'), why: 'Híd: átalakítás nélkül nem vonható össze.' };
     case 'szuperpozicio': {
+      // Helyettesítő generátor szuperpozícióval: az A–B üresjárási feszültség forrásonként osztókkal.
+      if (p.topic === 'thevenin') {
+        const ok = sources >= 2 && solveWith(p, 'szuperpozicio').ok;
+        return { ok, why: 'Az A–B kapcsok üresjárási feszültsége forrásonként osztókkal számolható, aztán előjelesen összeadjuk.' };
+      }
       // Csillag-deltával: valamelyik részáramkörben híd van (átalakítás, utána osztók).
       if (p.starDelta) {
         const r = solveWith(p, 'szuperpozicio');

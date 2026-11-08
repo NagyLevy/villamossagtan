@@ -8,6 +8,7 @@ import { killSources, toNetlist } from '../solver/netlist';
 import { simplificationStep, targetResistors } from './common';
 import type { Values } from './engine';
 import { singleSourceSteps } from './reduction';
+import { solveThevenin } from './thevenin';
 import { texElement, texOf, texQty } from './tex';
 import type { MethodAnswer, MethodResult, Step } from './types';
 
@@ -23,6 +24,15 @@ export function solveSuperposition(p: Problem): MethodResult {
   const net = map.net;
   const sources = net.elements.filter((e) => e.kind !== 'R');
   if (sources.length < 2) return { ok: false, reason: 'Szuperpozícióhoz legalább két forrás kell.' };
+  // Helyettesítő generátoros feladat (a tanár úr füzete szerint): az A–B kapcsok üresjárási feszültsége
+  // forrásonként osztókkal, (A→B) / (B→A) iránnyal, majd előjeles összeg; Rg a források kiiktatásával.
+  if (p.topic === 'thevenin' && p.questions.some((q) => q.kind === 'Uth')) {
+    const r = solveThevenin(p);
+    if (!r.ok) return r;
+    if (!r.solution.steps.some((s) => s.group === 'Uü: összegzés'))
+      return { ok: false, reason: 'Valamelyik részáramkör nem bontható soros és párhuzamos részekre, így osztókkal nem oldható meg' };
+    return { ok: true, solution: { ...r.solution, method: 'szuperpozicio', title: 'Szuperpozíció: helyettesítő generátor' } };
+  }
   const targets = [...new Set([...targetResistors(p), ...p.questions.filter((q) => q.kind === 'Isup').map((q) => q.target!)])];
   if (targets.length === 0) return { ok: false, reason: 'Nincs olyan kérdéses ellenállás, amelynek áramát összegezni lehetne.' };
   const els = new Map(allElements(p.circuit).map((e) => [e.id, e]));

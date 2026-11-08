@@ -14,6 +14,7 @@ export type QuestionKind =
   | 'Rth'
   | 'In'
   | 'IL' // terhelőáram a helyettesítő körből
+  | 'Pmax' // illesztett terheléssel kivehető legnagyobb teljesítmény: Uü² / (4 Rg)
   | 'Uk' // kapocsfeszültség
   | 'It' // terhelőáram (valódi generátor)
   | 'Rb' // belső ellenállás visszafejtése
