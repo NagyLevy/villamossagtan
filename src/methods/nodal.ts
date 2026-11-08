@@ -109,24 +109,28 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
     text:
       `${topo.essential.length} csomópontot vizsgálunk. ${names.has(ground) ? `A ${names.get(ground)} pontot választjuk referenciának` : 'A legtöbb ághoz csatlakozót választjuk referenciának'} (potenciálja 0). ` +
       (fixedCount ? `${fixedCount} csomópont potenciálját egy feszültségforrás közvetlenül rögzíti. ` : '') +
-      `Az ismeretlen potenciálok száma: ${topo.essential.length} − ${fixedCount} − 1 = ${unknownCount}.`,
-    terms: [`n_{\\text{ism}} = ${topo.essential.length} - ${fixedCount} - 1 = ${unknownCount}`],
+      `Az ismeretlen potenciálok száma n − 1 − nᵤ (n: csomópontok, nᵤ: feszültségforrással rögzítettek): ${topo.essential.length} − 1 − ${fixedCount} = ${unknownCount}.`,
+    terms: [`n - 1 - n_U = ${topo.essential.length} - 1 - ${fixedCount} = ${unknownCount}`],
     highlight: H({ nodes: dn(topo.essential), nodeLabels }),
     group: opts.group,
   });
 
-  const pathLatex = (q: Path, from: number): string => {
+  const pathLatex = (q: Path, from: number, num = false): string => {
     // A from csomópontból kifolyó áram az ágon: (φ_from − φ_to ± E) / R, vagy ±J.
     const to = q.s === from ? q.e : q.s;
     const sign = q.s === from ? 1 : -1;
     if (q.kind === 'I') return `${sign * q.J >= 0 ? '+' : '-'} ${texNum(Math.abs(q.J))}`;
     const E = sign * q.E;
-    const rs = q.elems.filter((e) => e.kind === 'R').map((e) => texElement(e.id)).join(' + ');
+    const rs = num ? texNum(q.R) : q.elems.filter((e) => e.kind === 'R').map((e) => texElement(e.id)).join(' + ');
     const eTex = Math.abs(E) < 1e-12 ? '' : ` ${E > 0 ? '+' : '-'} ${texNum(Math.abs(E))}`;
-    return `+ \\frac{${ph(from)} - ${ph(to)}${eTex}}{${rs}}`;
+    // A referencia potenciálja 0, ezért azt nem írjuk ki (φ₁/4, nem (φ₁ − φ₀)/4).
+    return `+ \\frac{${ph(from)}${to === ground ? '' : ` - ${ph(to)}`}${eTex}}{${rs}}`;
   };
 
-  for (const r of sys.rows) {
+  // A tanár úr módszere: a törtes egyenletet a nevezők legkisebb közös többszörösével beszorozzuk,
+  // hogy egész együtthatók legyenek. A megoldás ettől nem változik.
+  const rows = sys.rows.map((r) => ({ coeffs: [...r.coeffs], rhs: r.rhs }));
+  sys.rows.forEach((r, ri) => {
     if (r.kind === 'fix') {
       const q = r.path!;
       const isShort = q.elems.some((e) => e.id.startsWith('__'));
@@ -148,6 +152,13 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
       const cut = topo.paths.filter((q) => q.kind !== 'V' && q.s !== q.e && grp.includes(q.s) !== grp.includes(q.e));
       const terms = cut.map((q) => pathLatex(q, grp.includes(q.s) ? q.s : q.e));
       if (terms[0]?.startsWith('+ ')) terms[0] = terms[0].slice(2);
+      const numTerms = cut.map((q) => pathLatex(q, grp.includes(q.s) ? q.s : q.e, true));
+      if (numTerms[0]?.startsWith('+ ')) numTerms[0] = numTerms[0].slice(2);
+      const L = commonMultiple(cut.filter((q) => q.kind !== 'I').map((q) => q.R));
+      const scaledOk = L > 1 && [...r.coeffs, r.rhs].every((c) => Math.abs(c * L - Math.round(c * L)) < 1e-9);
+      if (scaledOk) rows[ri] = { coeffs: r.coeffs.map((c) => Math.round(c * L)), rhs: Math.round(r.rhs * L) };
+      const collected = linearTex(rows[ri]!.coeffs, sys.unknowns.map(ph), rows[ri]!.rhs);
+      const numeric = `${numTerms.join(' ')} = 0`;
       // Tagonként, egyszerű mondatokban: melyik ág, merre, mennyi.
       const bullets = cut.map((q) => {
         const from = grp.includes(q.s) ? q.s : q.e;
@@ -172,17 +183,18 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
             : `Kirchhoff csomóponti törvénye: a ${phTxt(grp[0]!)} pontból kifolyó áramok összege nulla (ami befolyik, az ki is folyik). `) + 'Minden kapcsolódó ágra felírjuk, mennyi áram folyik ki rajta:',
         bullets,
         terms: [...terms, '= 0'],
-        subst: linearTex(r.coeffs, sys.unknowns.map(ph), r.rhs),
+        subst: scaledOk ? `${numeric} \\quad\\Big|\\cdot ${L} \\quad\\Rightarrow\\quad ${collected}` : `${numeric} \\quad\\Rightarrow\\quad ${collected}`,
+        note: scaledOk ? `A törtek eltüntetéséhez az egyenlet mindkét oldalát beszorozzuk a nevezők legkisebb közös többszörösével (${L}), így egész együtthatók maradnak. A megoldás ettől nem változik.` : undefined,
         highlight: H({ nodes: dn(grp), nodeLabels, elements: shown(cut.flatMap((q) => q.elems.map((e) => e.id))) }),
         group: opts.group,
       });
     }
-  }
+  });
 
   steps.push(
     ...solveSystemSteps(
-      sys.rows.map((r) => r.coeffs),
-      sys.rows.map((r) => r.rhs),
+      rows.map((r) => r.coeffs),
+      rows.map((r) => r.rhs),
       sys.unknowns.map(ph),
       sys.unknowns.map(phTxt),
       x,
@@ -198,6 +210,19 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
     group: opts.group,
   });
   return { steps, sys, phi, values, currents, ph, phTxt };
+}
+
+/** Egész ellenállásértékek legkisebb közös többszöröse (1, ha nem egészek vagy túl nagy lenne). */
+function commonMultiple(rs: number[]): number {
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+  let L = 1;
+  for (const r of rs) {
+    const n = Math.round(r);
+    if (Math.abs(r - n) > 1e-9 || n <= 0) return 1;
+    L = (L * n) / gcd(L, n);
+    if (L > 1000) return 1;
+  }
+  return L;
 }
 
 export function solveNodalMethod(p: Problem): MethodResult {
