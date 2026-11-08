@@ -210,12 +210,27 @@ function loopSvg(ctx: OverlayContext, loop: LoopRef): { under: string; over: str
   };
 }
 
+/**
+ * A csomópont egyetlen pontja a rajzon (ahogy a füzetben): ahol a legtöbb ág találkozik, nem a
+ * hozzá tartozó összes vezeték.
+ */
+export function nodeAnchor(ctx: OverlayContext, node: number): Pt | null {
+  const px = toPx(ctx.circuit);
+  let best: { p: Pt; deg: number } | null = null;
+  for (const [pid, n] of ctx.map.pointNode) {
+    if (n !== node) continue;
+    const deg = ctx.circuit.branches.filter((b) => b.from === pid || b.to === pid).length;
+    if (!best || deg > best.deg) best = { p: px.get(pid)!, deg };
+  }
+  return best?.p ?? nodeGeometry(ctx, node).points[0] ?? null;
+}
+
 function nodeSvg(ctx: OverlayContext, node: number): { under: string; over: string } {
-  const g = nodeGeometry(ctx, node);
-  const d = g.segments.map((s) => `M${f(s.a.x)} ${f(s.a.y)}L${f(s.b.x)} ${f(s.b.y)}`).join('');
+  const p = nodeAnchor(ctx, node);
+  if (!p) return { under: '', over: '' };
   return {
-    under: d ? `<path d="${d}" fill="none" stroke="var(--node)" stroke-opacity="0.25" stroke-width="10" stroke-linecap="round"/>` : '',
-    over: g.points.map((p) => `<circle class="ov-node" cx="${f(p.x)}" cy="${f(p.y)}" r="6" fill="var(--node)" fill-opacity="0.9" stroke="var(--surface)" stroke-width="2"/>`).join(''),
+    under: `<circle cx="${f(p.x)}" cy="${f(p.y)}" r="13" fill="var(--node)" fill-opacity="0.18"/>`,
+    over: `<circle class="ov-node" cx="${f(p.x)}" cy="${f(p.y)}" r="7" fill="var(--node)" fill-opacity="0.95" stroke="var(--surface)" stroke-width="2"/>`,
   };
 }
 
@@ -265,8 +280,7 @@ function killedSvg(ctx: OverlayContext, id: string, as: 'short' | 'open'): strin
 }
 
 function nodeLabelSvg(ctx: OverlayContext, node: number, text: string): string {
-  const g = nodeGeometry(ctx, node);
-  const p = g.points[0];
+  const p = nodeAnchor(ctx, node);
   if (!p) return '';
   return chip(p.x + 8, p.y - 8, text, 'var(--node)');
 }

@@ -112,8 +112,27 @@ export interface NodalSystem {
 
 /** Referenciacsomópont: a legtöbb ághoz csatlakozó lényeges csomópont (döntetlennél a kisebb sorszám). */
 export function chooseGround(topo: Topology): number {
+  // A tanár úr szerint: a referencia (φ = 0) az a csomópont legyen, amelyik a legtöbb csomópont
+  // potenciálját megadja, vagyis amelyikhez feszültségforrásokon át a legtöbb csomópont kapcsolódik.
+  // Döntetlennél a több ághoz csatlakozó.
   const deg = (n: number) => topo.paths.filter((p) => p.s === n || p.e === n).length;
-  return [...topo.essential].sort((a, b) => deg(b) - deg(a) || a - b)[0]!;
+  const fixed = (g: number) => {
+    const seen = new Set([g]);
+    const queue = [g];
+    while (queue.length) {
+      const n = queue.shift()!;
+      for (const p of topo.paths) {
+        if (p.kind !== 'V' || p.s === p.e) continue;
+        const m = p.s === n ? p.e : p.e === n ? p.s : null;
+        if (m !== null && !seen.has(m)) {
+          seen.add(m);
+          queue.push(m);
+        }
+      }
+    }
+    return seen.size - 1;
+  };
+  return [...topo.essential].sort((a, b) => fixed(b) - fixed(a) || deg(b) - deg(a) || a - b)[0]!;
 }
 
 export function buildNodal(net: Netlist, ground?: number, forceEssential: number[] = []): NodalSystem | null {

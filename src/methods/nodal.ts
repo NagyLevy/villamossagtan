@@ -105,9 +105,16 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
   const steps: Step[] = [];
   const shown = (ids: string[]) => ids.filter((id) => !id.startsWith('__'));
   steps.push({
+    title: 'Hány csomópont van?',
+    text: `Először megszámoljuk a csomópontokat: azokat a pontokat, ahol legalább három ág találkozik. Az összekötő vezeték nem új csomópont, egy csomópontot egyetlen pont jelöl. Itt n = ${topo.essential.length}.`,
+    terms: [`n = ${topo.essential.length}`],
+    highlight: H({ nodes: dn(topo.essential) }),
+    group: opts.group,
+  });
+  steps.push({
     title: 'Csomópontok és referencia',
     text:
-      `${topo.essential.length} csomópontot vizsgálunk. ${names.has(ground) ? `A ${names.get(ground)} pontot választjuk referenciának` : 'A legtöbb ághoz csatlakozót választjuk referenciának'} (potenciálja 0). ` +
+      `${topo.essential.length} csomópontot vizsgálunk. ${names.has(ground) ? `A ${names.get(ground)} pontot választjuk referenciának (potenciálja 0)` : (fixedCount ? 'Referenciának azt a csomópontot választjuk, amelyik a legtöbb csomópont potenciálját megadja: egy feszültségforrás egyik végét, mert így a forrás másik végének potenciálja is rögtön ismert. A referencia potenciálja 0' : 'Egyik csomópont sincs feszültségforrással közvetlenül összekötve, ezért a legtöbb ághoz csatlakozót választjuk referenciának. A referencia potenciálja 0')}. ` +
       (fixedCount ? `${fixedCount} csomópont potenciálját egy feszültségforrás közvetlenül rögzíti. ` : '') +
       `Az ismeretlen potenciálok száma n − 1 − nᵤ (n: csomópontok, nᵤ: feszültségforrással rögzítettek): ${topo.essential.length} − 1 − ${fixedCount} = ${unknownCount}.`,
     terms: [`n - 1 - n_U = ${topo.essential.length} - 1 - ${fixedCount} = ${unknownCount}`],
@@ -180,7 +187,7 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
         text:
           (grp.length > 1
             ? 'Ezeket a csomópontokat egy feszültségforrás köti össze, ezért egyben kezeljük őket. Ami összesen kifolyik belőlük, annak nullának kell lennie (a köztük lévő forrás árama így kiesik). '
-            : `Kirchhoff csomóponti törvénye: a ${phTxt(grp[0]!)} pontból kifolyó áramok összege nulla (ami befolyik, az ki is folyik). `) + 'Minden kapcsolódó ágra felírjuk, mennyi áram folyik ki rajta:',
+            : `Kirchhoff csomóponti törvénye a ${phTxt(grp[0]!)} pontra. Minden ágat úgy írunk fel, mintha az áram (és a feszültség) a csomópontból kifelé menne: (${phTxt(grp[0]!)} − a túlsó vég potenciálja) / R, és ezeket összeadjuk; az összeg nulla. `) + 'Minden kapcsolódó ágra felírjuk, mennyi áram folyik ki rajta:',
         bullets,
         terms: [...terms, '= 0'],
         subst: scaledOk ? `${numeric} \\quad\\Big|\\cdot ${L} \\quad\\Rightarrow\\quad ${collected}` : `${numeric} \\quad\\Rightarrow\\quad ${collected}`,

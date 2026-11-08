@@ -91,7 +91,11 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   forrás árama, a rajzon „5 A” felirattal); **nincs szuperhurok**. Minden ellenállást és
   feszültségforrást érintenie kell egy ismeretlen huroknak. Tagok: R·(saját J előre, a többi után,
   ismert hurok számmal), pl. R₃(J₂ − 5); „= 0” alak, utána rendezés.
-- **Csomóponti potenciál** (`nodal.ts`): ismeretlenek száma n − 1 − nᵤ (nᵤ: feszültségforrással
+- **Csomóponti potenciál** (`nodal.ts`): először a csomópontok megszámolása (külön lépés). A rajzon
+  egy csomópontot **egyetlen pont** jelöl (ahol a legtöbb ág találkozik), nem az összes vezetéke
+  (`nodeAnchor`, `overlay.ts`). A referencia (φ = 0) az a csomópont, amelyik feszültségforrásokon át
+  a **legtöbb csomópont potenciálját megadja** (`chooseGround`, `engine.ts`). Minden ágat úgy írunk fel,
+  mintha a csomópontból kifelé menne, és összeadjuk. Ismeretlenek száma n − 1 − nᵤ (nᵤ: feszültségforrással
   rögzített csomópontok). Egyenlet: „kifolyó áramok összege = 0”, törtekkel, a számok beírva, a
   referencia φ-je nem szerepel (φ₁/4, nem (φ₁ − φ₀)/4); utána beszorzás a nevezők legkisebb közös
   többszörösével, hogy egész együtthatók legyenek.
