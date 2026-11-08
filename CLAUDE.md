@@ -6,6 +6,11 @@ Kuczmann–Kovács: Villamosságtan, Lineáris hálózatok elmélete I.). Vélet
 feladatok, lépésenkénti, animált levezetés. Négy mód: gyakorlás, időre, próbavizsga, napi feladatok.
 Nincs bejelentkezés, ranglista és pontrendszer. Élő oldal: https://nagylevy.github.io/villamossagtan/
 
+**Tudásbázis (csak Levi gépén):** ha létezik a `C:\Users\Levi\gyakorlok` Obsidian-vault, az a projekt
+„második agya” (szabályok, a tanár úr menete, döntések, előzmények). Munka előtt olvasd a `wiki/index.md`-t és a
+`wiki/app/app-szabalyok.md`-t; minden változás után frissítsd az érintett oldalt és a `wiki/log.md`-t. Ha
+ez a fájl és a vault szabályai eltérnek, hozd őket szinkronba. (A vault nincs a repóban; ha nem létezik, hagyd.)
+
 A felhasználók villamosságtant tanuló diákok: a felületen és a levezetésekben minden szöveg
 **magyarul**, egyszerűen, érthetően. A kód megjegyzései is magyarul vannak; ezt tartsd.
 
