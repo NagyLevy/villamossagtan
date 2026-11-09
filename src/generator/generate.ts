@@ -23,11 +23,11 @@ import {
 } from './questions';
 import { injectStarDelta, STAR_DELTA_TOPICS } from './inject';
 import { Rng } from './rng';
-import { makeElement, Sketch, type Slot, type SlotRole } from './sketch';
+import { finalize, makeElement, Sketch, type Slot, type SlotRole } from './sketch';
 import { addBypass, bridge, gridCellsOf, ladder, meshOptions, realSource, singleLoop, skeletonFor, type Topology } from './templates';
 import { meshes } from '../methods/engine';
 import { circuitIssues, seriesSourcePairs } from './validate';
-import { pickI, pickOhmR, pickR, pickV, POWER_RATINGS, type Level } from './values';
+import { pickI, pickOhmR, pickR, pickV, POWER_RATINGS, rCandidates, type Level } from './values';
 
 export type Topic = 'ohm' | 'eredo' | 'kirchhoff' | 'oszto' | 'halozat' | 'valodi-gen' | 'thevenin' | 'tobbforras' | 'tanari' | 'csillag-delta' | 'zh';
 
@@ -143,7 +143,9 @@ export function generateProblem(options: GenerateOptions): Problem {
       circuit = withBridge;
     }
     if (circuitIssues(circuit).length) continue;
-    // Egy ablakban (hurokban) legfeljebb egy forrás lehet.
+    // Minden ellenállás különböző értékű (így a neve az értékéből jön: 8 Ω → R8). Kivétel, ahol az egyforma értékek
+    // a feladat lényegéhez tartoznak: csillag-delta (szép, szimmetrikus csillag), kiegyenlített híd.
+    if (!inject && topic !== 'csillag-delta' && draft.zhType !== 'sok-ellenallas') circuit = withUniqueResistors(circuit, draftLevel, rng);
     if (tooManySourcesInMesh(circuit)) continue;
     const map = toNetlist(circuit);
     // Két forrás sosem kerül sorba (sem egy ágon belül, sem egy sarkon át).
@@ -535,9 +537,37 @@ function preferUnique(circuit: Circuit, ids: string[]): string[] {
  * Kérdezhető ellenállások: nem nulla áramúak. Ha van egyedi értékű köztük, csak azokat adjuk vissza,
  * hogy a kérdés a ZH-hoz hasonlóan értékkel nevezhesse meg az elemet ("a 6 Ω-os ellenálláson").
  */
+/** Az ismétlődő ellenállásértékeket egy még nem használtra cseréli, aztán újranevezi az elemeket (R8 = 8 Ω). */
+function withUniqueResistors(c: Circuit, level: Level, rng: Rng): Circuit {
+  const used = new Set<number>();
+  const cand = rCandidates(level === 'zh' ? 'zh' : level);
+  const branches = c.branches.map((b) => ({
+    ...b,
+    elements: b.elements.map((e) => {
+      if (e.kind !== 'R') return e;
+      if (!used.has(e.value)) {
+        used.add(e.value);
+        return e;
+      }
+      const free = cand.filter((v) => !used.has(v));
+      if (free.length === 0) return e;
+      const v = rng.pick(free);
+      used.add(v);
+      return { ...e, value: v };
+    }),
+  }));
+  return finalize({ ...c, branches });
+}
+
 function interestingResistors(ctx: Ctx): CircuitElement[] {
   const all = allElements(ctx.circuit);
-  const rs = all.filter((e) => e.kind === 'R' && Math.abs(ctx.sol.elements.get(e.id)!.I) > 1e-6);
+  // Áramforrással sorba kötött ellenállás nem jó kérdés (Levi, 11-09): az árama a forrás árama, nincs mit számolni.
+  const series = new Set(
+    ctx.circuit.branches.filter((b) => b.elements.some((e) => e.kind === 'I')).flatMap((b) => b.elements.filter((e) => e.kind === 'R').map((e) => e.id)),
+  );
+  const Igs = ctx.map.net.elements.filter((e) => e.kind === 'I').map((e) => Math.abs(e.value));
+  const trivial = (e: CircuitElement) => series.has(e.id) || Igs.some((ig) => Math.abs(Math.abs(ctx.sol.elements.get(e.id)!.I) - ig) < 1e-9);
+  const rs = all.filter((e) => e.kind === 'R' && Math.abs(ctx.sol.elements.get(e.id)!.I) > 1e-6 && !trivial(e));
   const unique = rs.filter((e) => all.filter((x) => x.kind === 'R' && x.value === e.value).length === 1);
   return unique.length ? unique : rs;
 }
@@ -620,11 +650,14 @@ function hardQuestionSet(ctx: Ctx, target: CircuitElement): Question[] | null {
  */
 function teacherDraft(level: Level, o: GenerateOptions, rng: Rng): Draft | null {
   const type: TeacherType = o.teacherType && o.teacherType !== 'veletlen' ? o.teacherType : rng.pick(TEACHER_TYPES);
-  const lvl: Level = sizeLevel(level) === 'nehez' ? 'nehez' : 'kozepes';
+  // Eddig az alapozó, könnyű és közepes szint ugyanazt adta (Levi: „a difficultyk nem jelentenek semmit”).
+  // Most minden szint a saját méretével készül; ahol a típusnak kell egy minimum, ott annyival nagyobb.
+  const lvl: Level = sizeLevel(level);
   const tag = (d: Draft | null): Draft | null => (d ? { ...d, teacherType: type } : null);
   switch (type) {
     case 'thevenin': {
-      const d = theveninDraft(lvl, { ...o, sourceCount: 2 }, rng);
+      // Alapozó szinten a Thevenin-kép két forrással nem fér el kisebb hálózatban: ott a könnyű méret.
+      const d = theveninDraft(lvl === 'alapozo' ? 'konnyu' : lvl, { ...o, sourceCount: 2 }, rng);
       if (!d) return null;
       return tag({
         ...d,
@@ -635,7 +668,9 @@ function teacherDraft(level: Level, o: GenerateOptions, rng: Rng): Draft | null 
       });
     }
     case 'szuperpozicio': {
-      const built = buildMulti('nehez', { ...o, sourceSplit: { nV: 2, nI: 1 } }, rng, 3);
+      // Szuperpozíció: kisebb szinten két forrás (két részáramkör), közepestől három.
+      const small = lvl === 'alapozo' || lvl === 'konnyu';
+      const built = buildMulti(lvl, { ...o, sourceSplit: small ? { nV: 1, nI: 1 } : { nV: 2, nI: 1 } }, rng, small ? 2 : 3);
       if (!built) return null;
       return tag({
         circuit: built.circuit,
@@ -643,7 +678,7 @@ function teacherDraft(level: Level, o: GenerateOptions, rng: Rng): Draft | null 
         ask: (ctx) => {
           const { circuit, map, sol, rng } = ctx;
           const sources = map.net.elements.filter((e) => e.kind !== 'R');
-          if (sources.length !== 3) return null;
+          if (sources.length !== (small ? 2 : 3)) return null;
           // Minden részáramkör eredővel és osztókkal (a szuperpozíciót így tanuljuk).
           if (!sources.every((x) => singleSourceSteps(killSources(map.net, [x.id]).net, [], {}) !== null)) return null;
           const rs = interestingResistors(ctx);
@@ -694,8 +729,11 @@ function teacherDraft(level: Level, o: GenerateOptions, rng: Rng): Draft | null 
       });
     }
     case 'csomoponti': {
-      const built = buildMulti(lvl, { ...o, sourceSplit: { nV: 1, nI: 1 } }, rng, 2);
+      // Csomópontihoz legalább 3 csomópont kell: kisebb szinten közepes méretű hálózat, de csak 3 csomóponttal.
+      const built = buildMulti(lvl === 'alapozo' || lvl === 'konnyu' ? 'kozepes' : lvl, { ...o, sourceSplit: { nV: 1, nI: 1 } }, rng, 2);
       if (!built) return null;
+      // Csomópontok száma szintenként: kisebb szinten 3 (egy-két ismeretlen potenciál), közepestől 4.
+      const nodesWanted = lvl === 'alapozo' || lvl === 'konnyu' ? 3 : 4;
       return tag({
         circuit: built.circuit,
         topology: built.topology,
@@ -707,10 +745,8 @@ function teacherDraft(level: Level, o: GenerateOptions, rng: Rng): Draft | null 
             degree[e.a]!++;
             degree[e.b]!++;
           }
-          if (degree.filter((d) => d >= 3).length !== 4) return null;
-          // Áramforrással sorba kötött ellenállás nem jó kérdés: az árama a forrásé, csomóponti egyenlet sem kell hozzá.
-          const Igs = map.net.elements.filter((e) => e.kind === 'I').map((e) => Math.abs(e.value));
-          const rs = interestingResistors(ctx).filter((r) => !Igs.some((ig) => Math.abs(Math.abs(sol.elements.get(r.id)!.I) - ig) < 1e-9));
+          if (degree.filter((d) => d >= 3).length !== nodesWanted) return null;
+          const rs = interestingResistors(ctx);
           if (rs.length < 2) return null;
           const [r1, r2] = rng.shuffle([...rs]) as [CircuitElement, CircuitElement];
           return [askElementI(circuit, r1, sol.elements.get(r1.id)!.I, true), askElementU(circuit, r2, sol.elements.get(r2.id)!.U, true)];

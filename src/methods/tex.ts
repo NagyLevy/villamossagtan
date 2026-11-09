@@ -37,7 +37,7 @@ export function texQty(x: number, unit: Unit, opts: { paren?: boolean } = {}): s
 
 /** Elem jele LaTeX-ben: R3 → R_{3}, Ug1 → U_{g1}, Ig2 → I_{g2}. */
 export function texElement(id: string): string {
-  const m = /^(R|L|C|Ug|Ig)(\d+)$/.exec(id);
+  const m = /^(R|L|C|Ug|Ig)(\d+(?:,\d+)?[kM]?)$/.exec(id);
   if (!m) return `\\text{${id}}`;
   if (m[1] === 'R' || m[1] === 'L' || m[1] === 'C') return `${m[1]}_{${m[2]}}`;
   return `${m[1]![0]}_{g${m[2]}}`;

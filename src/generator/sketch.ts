@@ -95,6 +95,14 @@ const PREFIX: Record<ElementKind, string> = { R: 'R', V: 'Ug', I: 'Ig', L: 'L', 
  * Végleges forma: az elemek olvasási sorrendben (fentről lefelé, balról jobbra) kapnak azonosítót
  * (R1, R2…, Ug1…, Ig1…), az ágak is ebben a sorrendben számozódnak.
  */
+/** Érték a névben: 8 → "8", 0,5 → "0,5", 2000 → "2k", 1500 → "1,5k", 1e6 → "1M". */
+export function valueName(v: number): string {
+  const f = (x: number) => String(Number(x.toPrecision(6))).replace('.', ',');
+  if (v >= 1e6) return `${f(v / 1e6)}M`;
+  if (v >= 1000) return `${f(v / 1000)}k`;
+  return f(v);
+}
+
 export function finalize(c: Circuit): Circuit {
   const pos = new Map(c.points.map((p) => [p.id, p]));
   const mid = (b: Branch) => {
@@ -108,10 +116,15 @@ export function finalize(c: Circuit): Circuit {
     return a.y - b.y || a.x - b.x;
   });
   const counters: Record<ElementKind, number> = { R: 0, V: 0, I: 0, L: 0, C: 0, K: 0 };
+  // Levi kérése (2026-11-09), a ZH-k jelölése szerint: az ellenállás neve az értékéből jön (8 Ω → R8, 0,5 Ω → R0,5,
+  // 2 kΩ → R2k). Ehhez minden ellenállás értéke különböző kell legyen; ha nem az (pl. szimmetrikus csillag-delta,
+  // kiegyenlített híd), marad a sorszámozás (R1, R2 …).
+  const rVals = c.branches.flatMap((b) => b.elements.filter((e) => e.kind === 'R').map((e) => e.value));
+  const byValue = new Set(rVals).size === rVals.length;
   const branches = sorted.map((b, i) => ({
     ...b,
     id: `b${i + 1}`,
-    elements: b.elements.map((e) => ({ ...e, id: `${PREFIX[e.kind]}${++counters[e.kind]}` })),
+    elements: b.elements.map((e) => ({ ...e, id: e.kind === 'R' && byValue ? `R${valueName(e.value)}` : `${PREFIX[e.kind]}${++counters[e.kind]}` })),
   }));
   return { points: c.points.map((p) => ({ ...p })), branches, terminals: c.terminals ? { ...c.terminals } : undefined, ports: c.ports?.map((x) => ({ ...x })) };
 }

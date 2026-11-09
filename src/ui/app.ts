@@ -6,7 +6,7 @@ import { generateProblem, type Topic } from '../generator/generate';
 import { randomSeed } from '../generator/rng';
 import type { Level } from '../generator/values';
 import type { AcLevel, AcTopic } from '../ac/problems';
-import { applicableMethods, solveWith } from '../methods';
+import { solveWith } from '../methods';
 import { methodFit, recommendMethod } from '../methods/fit';
 import { dailyProblem } from '../daily/problem';
 import { DAILY_LEVELS, dailyChallenge, dayKey, msUntilNext, type DailyLevel } from '../daily/schedule';
@@ -179,19 +179,13 @@ export function startApp(root: HTMLElement): void {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  /** Módszerválasztás: ha a mostani feladathoz jó, marad a feladat; ha nem, illőt keresünk. */
+  /**
+   * Módszerválasztás: a feladat MINDIG marad, csak a megoldás menete változik (Levi kérése, 2026-11-09).
+   * A legördülőben csak az erre a feladatra alkalmazható módszerek szerepelnek.
+   */
   const pickMethod = (m: MethodId) => {
     update({ method: m });
-    const t = viewer.current;
-    // A tanár úr témakörében minden módszerhez a saját feladattípusa tartozik.
-    const teacherMismatch = t?.dc?.topic === 'tanari' && t.dc.teacherType !== m;
-    if (t?.dc && !teacherMismatch && applicableMethods(t.dc).includes(m)) {
-      viewer.setMethod(m);
-      return;
-    }
-    if (settings.mode !== 'gyakorlas') return viewer.setMethod(m);
-    toast(teacherMismatch ? 'Hoztam a tanár úr ehhez a módszerhez tartozó feladattípusát.' : 'Ehhez a feladathoz ez a módszer nem alkalmazható: hoztam egy hozzáillőt.');
-    newPractice();
+    viewer.setMethod(m);
   };
 
   const showPractice = () => {

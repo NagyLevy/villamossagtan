@@ -46,6 +46,11 @@ const POOLS: Record<Level, Pools> = {
   },
 };
 
+/** Ellenállásértékek, ha egy feladatban minden ellenállás különböző értékű kell legyen: a szint készlete, utána tartalék. */
+export function rCandidates(level: Level): number[] {
+  return [...POOLS[level].R, ...[7, 9, 11, 14, 16, 18, 25, 22, 35, 45].filter((v) => !POOLS[level].R.includes(v))];
+}
+
 export function pickR(rng: Rng, level: Level): number {
   return rng.pick(POOLS[level].R);
 }

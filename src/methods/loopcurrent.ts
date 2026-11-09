@@ -84,13 +84,35 @@ export function solveLoopCurrent(p: Problem): MethodResult {
 
   // Hurkok: minden ablak egy hurok; áramforrásnál az ismert hurok, közös ágnál összevont körvonal.
   const loops = new Map<number, Loop>(ms.map((m) => [m.index, { elements: m.elements, unknown: 0, value: 0 }]));
-  for (const s of sources.filter((e) => e.kind === 'I')) {
+  // Melyik ablak melyik áramforrás ismert hurka. Ha egy áramforrás két ablak közös ágán ül, és az egyik ablak már
+  // egy másik áramforrás ismert hurka, akkor a MÁSIK ablakot kapja (vizsga 2020-12-14/1: a 2 mA-es forrás a jobb
+  // felső ablakot, az 1 mA-es hurka pedig a két ablak közös körvonala lesz, ahogy a tanár úr rajzolja).
+  const owner = new Map<number, string>();
+  const isrc = sources.filter((e) => e.kind === 'I');
+  // Előbb azok a források, amelyek csak egy ablakban vannak (külső ágon): azoknak nincs választásuk.
+  const order = [...isrc].sort((x, y) => windowsOf(x.id).length - windowsOf(y.id).length);
+  for (const s of order) {
     const ws = windowsOf(s.id);
     if (ws.length === 0) continue;
-    const [A, B] = ws as [{ m: Mesh; s: number }, { m: Mesh; s: number } | undefined];
+    const free = ws.filter((w) => !owner.has(w.m.index));
+    if (free.length === 0) return { ok: false, reason: 'Az áramforrások ismert hurkai nem választhatók ablakonként: ezt a feladatot csomóponti potenciállal érdemes megoldani.' };
+    const A = free[0]!;
+    const B = ws.find((w) => w !== A);
+    owner.set(A.m.index, s.id);
     // A forrás ága csak az ismert hurokban van: a hurokáram előjelesen a forrás árama.
     loops.set(A.m.index, { elements: A.m.elements, unknown: null, value: s.value * Math.sign(A.s), source: s.id });
-    if (B) loops.set(B.m.index, { elements: mergeBoundary(A.m, B.m), unknown: 0, value: 0 });
+    if (B) {
+      const prev = loops.get(B.m.index)!;
+      if (owner.has(B.m.index)) {
+        // B egy másik forrás ismert hurka, és most átmenne ezen a forráson is: körvonalra bővítjük (A + B, a közös ág nélkül).
+        loops.set(B.m.index, { ...prev, elements: mergeBoundary(A.m, B.m) });
+      } else loops.set(B.m.index, { elements: mergeBoundary(A.m, B.m), unknown: 0, value: 0 });
+    }
+  }
+  // Ellenőrzés: minden áramforrás pontosan egy hurokban legyen (különben a módszer itt nem így megy).
+  for (const s of isrc) {
+    const n = [...loops.values()].filter((l) => l.elements.some((x) => x.id === s.id)).length;
+    if (n !== 1) return { ok: false, reason: 'Az áramforrások ismert hurkai nem választhatók ablakonként: ezt a feladatot csomóponti potenciállal érdemes megoldani.' };
   }
   const ordered = [...loops.entries()].sort((x, y) => x[0] - y[0]).map(([, l]) => l);
   let k = 0;
@@ -253,7 +275,7 @@ export function solveLoopCurrent(p: Problem): MethodResult {
       ...(known.length
         ? [
             `Minden áramforrásnak saját, ismert hurka van: ${known.map((l) => `${l.source} → ${formatQuantity(Math.abs(l.value), 'A')}`).join(', ')}. Ezt nem kell kiszámolni, a hurokáram maga a forrás árama.`,
-            'Minden ellenállást és feszültségforrást érintenie kell egy ismeretlen huroknak (akkor is, ha egy ismert hurok már átmegy rajta). Az áramforrást csak az ismert hurok érinti.',
+            'Minden áramforrás pontosan egy hurokban van: a saját, ismert hurkában. Ahol csak ismert hurkok folynak át egy ellenálláson, ott az árama ismert.',
           ]
         : []),
       `${M} ismeretlen hurokáram: ${plain.join(', ')}.`,

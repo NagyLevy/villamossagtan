@@ -324,7 +324,11 @@ export class TaskViewer {
 
     if (t.dc && !testHidden) {
       // Módszerválasztó: egy legördülő a sok fül helyett.
-      const opts = methodList(this.sdOn()).map((m) => ({ value: m.id, label: m.label }));
+      // Csak az erre a feladatra alkalmazható módszerek (amivel nem oldható meg, az nem is jelenik meg).
+      const usable = applicableMethods(t.dc);
+      const opts = methodList(this.sdOn())
+        .filter((m) => usable.includes(m.id) || m.id === this.method)
+        .map((m) => ({ value: m.id, label: m.label }));
       const sel = select<MethodId>('Megoldási módszer', opts, this.method, (v) => {
         if (this.hooks.onMethodPick && this.mode === 'practice') this.hooks.onMethodPick(v);
         else this.setMethod(v);

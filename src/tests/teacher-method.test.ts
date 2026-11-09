@@ -389,3 +389,70 @@ describe('Vizsga 2021-01-18 / 2, a PDF-ábra pontos kapcsolásával', () => {
     console.log('2021-01-18/2 app-egyenlet:', eqs[0]!.subst);
   });
 });
+
+// ───────── Vizsgák a PDF-ábrák pontos kapcsolásával (raw/villamossagtan/pdf) ─────────
+// Ág: [x1, y1, x2, y2, fajta, érték, irány]. Rács: x = 0, 2, 4; y = 0 (fent), 2, 4 (lent).
+// Feszültségforrás iránya: +1 → a to (jobb/alsó) vég a magasabb; áramforrás: +1 → from→to (jobbra/lefelé) folyik.
+type Br = [number, number, number, number, ('R' | 'V' | 'I' | 'W'), number?, (1 | -1)?];
+async function examProblem(branches: Br[], target: { kind: 'R'; value: number }, ask: 'U' | 'I') {
+  const { Sketch, makeElement } = await import('../generator/sketch');
+  const { toNetlist: tn } = await import('../solver/netlist');
+  const { askElementI, askElementU } = await import('../generator/questions');
+  const sk = new Sketch();
+  for (const [x1, y1, x2, y2, k, v, d] of branches) sk.branch(x1, y1, x2, y2, k === 'W' ? [] : [makeElement(k, v!, d ?? 1)]);
+  const circuit = sk.build();
+  const sol = solve(tn(circuit).net)!;
+  const el = circuit.branches.flatMap((b) => b.elements).find((e) => e.kind === 'R' && e.value === target.value)!;
+  const v = sol.elements.get(el.id)!;
+  const q = ask === 'U' ? askElementU(circuit, el, v.U, true) : askElementI(circuit, el, v.I, true);
+  return { seed: 'VIZSGA', topic: 'tobbforras', level: 'kozepes', topology: 'egyedi', circuit, questions: [q], stats: { meshes: 0, resistors: 0, sources: branches.filter((b) => b[4] === 'V' || b[4] === 'I').length }, attempts: 1 } as unknown as Parameters<typeof solveWith>[0];
+}
+async function checkExam(p: Parameters<typeof solveWith>[0], answer: number, method: 'hurokaram' | 'csomoponti', eqs: number) {
+  const { recommendMethod, systemSize } = await import('../methods/fit');
+  expect(p.questions[0]!.answer).toBeCloseTo(answer, 3);
+  const rec = recommendMethod(p);
+  const r = solveWith(p, rec.method);
+  expect(r.ok).toBe(true);
+  if (!r.ok) return;
+  expect(r.solution.answers[0]!.value).toBeCloseTo(answer, 3);
+  expect(systemSize(r)).toBe(eqs);
+  const own = solveWith(p, method);
+  expect(own.ok).toBe(true);
+  if (own.ok) expect(systemSize(own)).toBe(eqs);
+  return { rec: rec.method, eq: own.ok ? own.solution.steps.filter((x) => /^(Huroktörvény|Csomóponti egyenlet)/.test(x.title)).map((x) => x.subst) : [] };
+}
+
+describe('Vizsgák a PDF-ábrák pontos kapcsolásával: módszer, egyenletszám, eredmény', () => {
+  it('2020-12-14/1: hurokáram, egy ismeretlen hurok („18J1 = 0”), U4k = 4 V', async () => {
+    const p = await examProblem([
+      [0, 0, 2, 0, 'I', 0.001, 1], [2, 0, 4, 0, 'R', 1000], [4, 0, 4, 2, 'R', 2000], [0, 0, 0, 2, 'V', 2, -1], [2, 0, 2, 2, 'I', 0.002, 1],
+      [0, 2, 2, 2, 'R', 3000], [2, 2, 4, 2, 'R', 4000], [4, 2, 4, 4, 'R', 5000], [0, 2, 0, 4, 'W'], [0, 4, 2, 4, 'V', 1, -1], [2, 4, 4, 4, 'R', 6000],
+    ], { kind: 'R', value: 4000 }, 'U');
+    const r = await checkExam(p, 4, 'hurokaram', 1);
+    console.log('2020-12-14/1', JSON.stringify(r));
+  });
+  it('2020-12-14/2: csomóponti, „tulajdonképpen számolás nélkül”, U7k = 2 V', async () => {
+    const p = await examProblem([
+      [0, 0, 2, 0, 'V', 1, -1], [2, 0, 4, 0, 'R', 1000], [4, 0, 4, 2, 'R', 2000], [0, 0, 0, 2, 'V', 2, -1], [2, 0, 2, 2, 'V', 3, -1],
+      [0, 2, 2, 2, 'R', 3000], [2, 2, 4, 2, 'R', 4000], [2, 2, 2, 4, 'R', 7000], [4, 2, 4, 4, 'R', 5000], [0, 2, 0, 4, 'W'], [0, 4, 2, 4, 'V', 4, -1], [2, 4, 4, 4, 'R', 6000],
+    ], { kind: 'R', value: 7000 }, 'U');
+    const r = await checkExam(p, 2, 'csomoponti', 0);
+    console.log('2020-12-14/2', JSON.stringify(r));
+  });
+  it('2021-01-11/1: csomóponti, Φ1 „nincs is szükség”, I2Ω = 4 V/3 Ω = 1,33 A', async () => {
+    const p = await examProblem([
+      [0, 0, 2, 0, 'R', 1], [2, 0, 4, 0, 'R', 4], [0, 0, 0, 2, 'R', 2], [2, 0, 2, 2, 'V', 1, -1], [4, 0, 4, 2, 'W'],
+      [0, 2, 2, 2, 'R', 3], [2, 2, 4, 2, 'R', 5], [0, 2, 0, 4, 'V', 2, -1], [2, 2, 2, 4, 'V', 3, 1], [4, 2, 4, 4, 'I', 4, 1], [0, 4, 2, 4, 'W'], [2, 4, 4, 4, 'R', 6],
+    ], { kind: 'R', value: 2 }, 'I');
+    const r = await checkExam(p, 4 / 3, 'csomoponti', 0);
+    console.log('2021-01-11/1', JSON.stringify(r));
+  });
+  it('2021-01-11/2: hurokáram, egy ismeretlen hurok („15J = 28”), U2Ω = 4,267 V', async () => {
+    const p = await examProblem([
+      [0, 0, 2, 0, 'R', 1], [2, 0, 4, 0, 'R', 4], [0, 0, 0, 2, 'R', 2], [2, 0, 2, 2, 'I', 1, 1], [4, 0, 4, 2, 'W'],
+      [0, 2, 2, 2, 'R', 3], [2, 2, 4, 2, 'R', 5], [0, 2, 0, 4, 'V', 2, -1], [2, 2, 2, 4, 'I', 3, -1], [4, 2, 4, 4, 'I', 4, 1], [0, 4, 2, 4, 'W'], [2, 4, 4, 4, 'R', 6],
+    ], { kind: 'R', value: 2 }, 'U');
+    const r = await checkExam(p, 4.267, 'hurokaram', 1);
+    console.log('2021-01-11/2', JSON.stringify(r));
+  });
+});

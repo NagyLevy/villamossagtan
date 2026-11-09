@@ -38,8 +38,10 @@ function expectValidHighlights(p: Problem, s: Solution) {
   const ids = new Set(allElements(p.circuit).map((e) => e.id));
   for (const st of s.steps) {
     const h = st.highlight;
+    // Saját ábrája van (pl. a Thevenin-helyettesítő kép): annak az elemeire hivatkozik.
+    const known = st.circuit ? new Set(allElements(st.circuit).map((e) => e.id)) : ids;
     for (const id of [...(h.elements ?? []), ...(h.dim ?? []), ...(h.groups ?? []).flatMap((g) => g.elements), ...(h.arrows ?? []).map((a) => a.element), ...(h.loops ?? []).flatMap((l) => l.elements.map((e) => e.id))]) {
-      expect(ids.has(id), `ismeretlen elem a kiemelésben: ${id}`).toBe(true);
+      expect(known.has(id), `ismeretlen elem a kiemelésben: ${id}`).toBe(true);
     }
     expect(st.title.length).toBeGreaterThan(0);
     expect(st.text.length).toBeGreaterThan(0);
