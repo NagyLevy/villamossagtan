@@ -491,6 +491,11 @@ export function solveByReduction(p: Problem): MethodResult {
       ? { terms: [`${texOf('I', single.target!)} =`, `\\frac{${texOf('U', single.target!)}}{${texElement(single.target!)}}`], subst: `${texOf('I', single.target!)} = \\frac{${texQty(Math.abs(sv.U), 'V')}}{${texQty(R, 'Ω')}}` }
       : single && sv && single.kind === 'U'
         ? { terms: [`${texOf('U', single.target!)} =`, `${texOf('I', single.target!)} \\cdot ${texElement(single.target!)}`], subst: `${texOf('U', single.target!)} = ${texQty(Math.abs(sv.I), 'A')} \\cdot ${texQty(R, 'Ω')}` }
+        : single && sv && single.kind === 'P' && single.target === s.id
+          ? // ZH 2021/4: „az áramforrás teljesítménye a rá kapcsolt ellenálláshálózat eredőjével számolható: P = I²Re”.
+            s.kind === 'I'
+            ? { terms: [`P_{\\text{${s.id}}} =`, `I_g^2 \\cdot R_e`], subst: `P_{\\text{${s.id}}} = \\left(${texQty(s.value, 'A')}\\right)^2 \\cdot \\left(${exprNum(root)}\\right) = ${texQty(s.value * s.value * root.R, 'W')}\\ \\text{(leadott)}` }
+            : { terms: [`P_{\\text{${s.id}}} =`, `\\frac{U_g^2}{R_e}`], subst: `P_{\\text{${s.id}}} = \\frac{\\left(${texQty(s.value, 'V')}\\right)^2}{${exprNum(root)}} = ${texQty((s.value * s.value) / root.R, 'W')}\\ \\text{(leadott)}` }
         : single && sv && single.kind === 'P'
           ? // A tanár úr: P = I²·R (áramból) vagy U²/R (feszültségből), aszerint, amit az osztó adott.
             s.kind === 'I'

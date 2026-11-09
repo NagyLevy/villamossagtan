@@ -41,7 +41,7 @@ export interface DcSpec {
   seed: string;
   starDelta?: boolean;
   starDeltaMode?: 'delta-csillag' | 'csillag-delta' | 'veletlen';
-  askPower?: boolean;
+  askPower?: boolean | 'R' | 'source';
   /** A tanári gyakorlati típusok közül (topic: 'tanari'). */
   teacherType?: TeacherType;
 }
@@ -135,7 +135,7 @@ export function examTasks(kind: ExamKind, seed: string): Task[] {
       dc(0, 'csillag-delta', 'kozepes', true),
       makeTask({ domain: 'dc', topic: 'tanari', level: 'kozepes', seed: s(1), teacherType: 'hurokaram' }),
       dc(2, 'oszto', 'nehez'),
-      makeTask({ domain: 'dc', topic: 'oszto', level: 'nehez', seed: s(3), askPower: true }),
+      makeTask({ domain: 'dc', topic: 'oszto', level: 'nehez', seed: s(3), askPower: rng.chance(0.5) ? 'R' : 'source' }),
       makeTask({ domain: 'dc', topic: 'tanari', level: 'kozepes', seed: s(4), teacherType: 'thevenin' }),
     ];
   if (kind === 'ac')

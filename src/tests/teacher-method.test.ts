@@ -214,10 +214,59 @@ describe('a tanár úr írásmódja a levezetésben (ZH 2020/2021 megoldásai al
       if (t.ok) {
         for (const s of t.solution.steps.filter((x) => x.title.startsWith('Részfeszültség') && x.subst)) expect(s.subst!.endsWith('A \\to B)') || s.subst!.endsWith('B \\to A)')).toBe(true);
         const sum = t.solution.steps.find((x) => x.title === 'Összegzés');
-        if (sum) expect(sum.subst).not.toMatch(/\(-/);
+        if (sum) {
+          expect(sum.subst).not.toMatch(/\(-/);
+          expect(sum.subst!.endsWith('A \\to B)') || sum.subst!.endsWith('B \\to A)')).toBe(true);
+          expect(sum.terms![0]).not.toMatch(/= -/); // az első rész mindig +
+        }
       }
       const all = JSON.stringify([h, c, t]);
       expect(/\d\.\d+\\\\,\\\\text/.test(all)).toBe(false); // nincs tizedespont a megjelenített számokban
     }
+  });
+});
+
+describe('ZH 2021-10-26 A (a tanár úr megoldásai)', () => {
+  it('3. feladat: I2 = 1 · 6/(6 + 5 + 2 × (4 + 3)) · (4 + 3)/(4 + 3 + 2) = 0,372 A', () => {
+    const net: Netlist = {
+      nodeCount: 5,
+      elements: [
+        { id: 'Ig1', kind: 'I', value: 1, a: 0, b: 1 },
+        R('R6', 6, 1, 0), R('R5', 5, 1, 2), R('R2', 2, 2, 0), R('R4', 4, 2, 3), R('R3', 3, 3, 0),
+      ],
+    };
+    const st = chainStepOf(net, 'R2');
+    expect(st.result!.value).toBeCloseTo(0.372, 3);
+    expect(Math.abs(solve(net)!.elements.get('R2')!.I)).toBeCloseTo(st.result!.value, 9);
+  });
+
+  it('4. feladat: az áramforrás teljesítménye P = I²·Re, Re = (((2 + 1) × 2) + 4 + 5) × 1 + 3 = 3,911 Ω → 3,911 W', () => {
+    const rs = [R('R3', 3, 1, 2), R('R1', 1, 2, 0), R('R5', 5, 2, 3), R('R4', 4, 3, 4), R('R2', 2, 4, 0), R('Ra', 2, 4, 5), R('Rb', 1, 5, 0)];
+    const red = reduceSP(rs, 1, 0)!;
+    expect(red.root.R).toBeCloseTo(3.911, 3);
+    const net: Netlist = { nodeCount: 6, elements: [{ id: 'Ig1', kind: 'I', value: 1, a: 0, b: 1 }, ...rs] };
+    const sol = solve(net)!.elements.get('Ig1')!;
+    expect(Math.abs(sol.U * sol.I)).toBeCloseTo(3.911, 3);
+  });
+});
+
+describe('1. ZH 4. feladat forrás-változata: P = I²·Re vagy U²/Re, leadott → negatív', () => {
+  it('a redukció válasza = MNA, a záró lépés a tanár úr képlete', async () => {
+    const { examTasks } = await import('../tasks');
+    let src = 0;
+    for (let i = 0; i < 40; i++) {
+      const p = examTasks('zh1', `PS${i}`)[3]!.dc!;
+      const q = p.questions[0]!;
+      if (!q.target || q.target.startsWith('R')) continue;
+      src++;
+      const r = solveWith(p, 'redukcio');
+      expect(r.ok).toBe(true);
+      if (!r.ok) continue;
+      expect(r.solution.answers[0]!.value).toBeCloseTo(q.answer, 8);
+      const last = r.solution.steps.at(-1)!;
+      expect(last.terms!.join(' ')).toMatch(/R_e/);
+      expect(last.subst).toContain('leadott');
+    }
+    expect(src).toBeGreaterThan(5);
   });
 });

@@ -71,8 +71,8 @@ export interface GenerateOptions {
   teacherType?: TeacherType | 'veletlen';
   /** Pontos forrásmegoszlás (feszültség- és áramforrások száma). */
   sourceSplit?: { nV: number; nI: number };
-  /** Osztós feladatban egy ellenállás teljesítményét kérdezzük (1. ZH 4. feladata). */
-  askPower?: boolean;
+  /** Osztós feladatban teljesítményt kérdezünk (1. ZH 4. feladata): egy ellenállásét (2020) vagy a forrásét (2021). */
+  askPower?: boolean | 'R' | 'source';
 }
 
 export interface Problem {
@@ -333,7 +333,7 @@ function singleSourceSP(level: Level, rng: Rng, trick: boolean): { sketch: Sketc
   return { sketch: s, kind };
 }
 
-function osztoDraft(level: Level, rng: Rng, askPower = false): Draft | null {
+function osztoDraft(level: Level, rng: Rng, askPower: boolean | 'R' | 'source' = false): Draft | null {
   const built = singleSourceSP(level, rng, rng.chance(0.3));
   if (!built) return null;
   return {
@@ -345,6 +345,10 @@ function osztoDraft(level: Level, rng: Rng, askPower = false): Draft | null {
       if (rs.length === 0) return null;
       const el = rng.pick(rs);
       const r = sol.elements.get(el.id)!;
+      if (askPower === 'source') {
+        const src = allElements(circuit).find((e) => e.kind !== 'R')!;
+        return [askElementP(circuit, src, sol.elements.get(src.id)!.P)];
+      }
       if (askPower) return [askElementP(circuit, el, r.P)];
       return [rng.chance(0.5) ? askElementU(circuit, el, r.U, true) : askElementI(circuit, el, r.I, true)];
     },
