@@ -284,3 +284,24 @@ describe('összevont ellenállás neve: Re′, Re″ (Levi döntése, 2026-11-09
     expect(primed).toBeGreaterThan(10);
   });
 });
+
+describe('Vizsga 2021-01-11 / 3 (a tanár úr megoldása, delta-csillag után)', () => {
+  it('Rg = (6 + 1 + 1,25) × 2 = 1,61 Ω; U′ = 0,39 V, U″ = 0,78 V ellentétes, U = 0,39 V; PM = U²/(4Rg) = 23,62 mW', () => {
+    // A–B = 1–0, a 2 Ω-os ellenállás a kapcsokon; a lánc: 2 V-os forrás, 6 Ω, 1 Ω (rajta a 4 A-es áramforrás), 1,25 Ω.
+    const chain = [R('R6', 6, 2, 3), R('R1', 1, 3, 4), R('R125', 1.25, 4, 1), R('R2', 2, 1, 0)];
+    const red = reduceSP(chain.map((e) => ({ ...e })).concat([R('W', 1e-12, 0, 2)]), 1, 0)!;
+    expect(red.root.R).toBeCloseTo(1.61, 2);
+    let best = Infinity;
+    for (const dv of [1, -1])
+      for (const di of [1, -1]) {
+        const net: Netlist = {
+          nodeCount: 5,
+          elements: [{ id: 'Ug', kind: 'V', value: 2 * dv, a: 0, b: 2 }, { id: 'Ig', kind: 'I', value: 4 * di, a: 3, b: 4 }, ...chain],
+        };
+        const U = Math.abs(solve(net)!.elements.get('R2')!.U);
+        best = Math.min(best, Math.abs(U - 0.39));
+        if (Math.abs(U - 0.39) < 0.01) expect((U * U) / (4 * red.root.R)).toBeCloseTo(0.02362, 3);
+      }
+    expect(best).toBeLessThan(0.01); // az egyik irányítással pontosan a tanár úr 0,39 V-ja jön ki (U″ − U′)
+  });
+});
