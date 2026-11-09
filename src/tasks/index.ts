@@ -41,6 +41,7 @@ export interface DcSpec {
   seed: string;
   starDelta?: boolean;
   starDeltaMode?: 'delta-csillag' | 'csillag-delta' | 'veletlen';
+  askPower?: boolean;
   /** A tanári gyakorlati típusok közül (topic: 'tanari'). */
   teacherType?: TeacherType;
 }
@@ -56,7 +57,7 @@ export type TaskSpec = DcSpec | AcSpec;
 
 export function makeTask(s: TaskSpec): Task {
   if (s.domain === 'ac') return generateAcTask({ seed: s.seed, topic: s.topic, level: s.level });
-  return dcTask(generateProblem({ seed: s.seed, topic: s.topic, level: s.level, starDelta: s.starDelta, starDeltaMode: s.starDeltaMode, teacherType: s.teacherType }));
+  return dcTask(generateProblem({ seed: s.seed, topic: s.topic, level: s.level, starDelta: s.starDelta, starDeltaMode: s.starDeltaMode, teacherType: s.teacherType, askPower: s.askPower }));
 }
 
 // ───────── Témakörök a választóhoz ─────────
@@ -134,7 +135,7 @@ export function examTasks(kind: ExamKind, seed: string): Task[] {
       dc(0, 'csillag-delta', 'kozepes', true),
       makeTask({ domain: 'dc', topic: 'tanari', level: 'kozepes', seed: s(1), teacherType: 'hurokaram' }),
       dc(2, 'oszto', 'nehez'),
-      dc(3, 'ohm', 'nehez'),
+      makeTask({ domain: 'dc', topic: 'oszto', level: 'nehez', seed: s(3), askPower: true }),
       makeTask({ domain: 'dc', topic: 'tanari', level: 'kozepes', seed: s(4), teacherType: 'thevenin' }),
     ];
   if (kind === 'ac')

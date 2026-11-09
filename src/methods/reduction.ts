@@ -491,7 +491,12 @@ export function solveByReduction(p: Problem): MethodResult {
       ? { terms: [`${texOf('I', single.target!)} =`, `\\frac{${texOf('U', single.target!)}}{${texElement(single.target!)}}`], subst: `${texOf('I', single.target!)} = \\frac{${texQty(Math.abs(sv.U), 'V')}}{${texQty(R, 'Ω')}}` }
       : single && sv && single.kind === 'U'
         ? { terms: [`${texOf('U', single.target!)} =`, `${texOf('I', single.target!)} \\cdot ${texElement(single.target!)}`], subst: `${texOf('U', single.target!)} = ${texQty(Math.abs(sv.I), 'A')} \\cdot ${texQty(R, 'Ω')}` }
-        : {};
+        : single && sv && single.kind === 'P'
+          ? // A tanár úr: P = I²·R (áramból) vagy U²/R (feszültségből), aszerint, amit az osztó adott.
+            s.kind === 'I'
+            ? { terms: [`P_{\\text{${single.target}}} =`, `${texOf('I', single.target!)}^2 \\cdot ${texElement(single.target!)}`], subst: `P_{\\text{${single.target}}} = \\left(${texQty(Math.abs(sv.I), 'A')}\\right)^2 \\cdot ${texQty(R, 'Ω')}` }
+            : { terms: [`P_{\\text{${single.target}}} =`, `\\frac{${texOf('U', single.target!)}^2}{${texElement(single.target!)}}`], subst: `P_{\\text{${single.target}}} = \\frac{\\left(${texQty(Math.abs(sv.U), 'V')}\\right)^2}{${texQty(R, 'Ω')}}` }
+          : {};
   steps.push({
     title: 'Eredmény',
     text: finals.length ? finals.map((q) => answerSentence(q, answers.find((a) => a.questionId === q.id)?.value)).join(' ') : 'Minden ág árama az ábrán, a referenciairány szerint.',

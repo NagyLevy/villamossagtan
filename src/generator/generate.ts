@@ -71,6 +71,8 @@ export interface GenerateOptions {
   teacherType?: TeacherType | 'veletlen';
   /** Pontos forrásmegoszlás (feszültség- és áramforrások száma). */
   sourceSplit?: { nV: number; nI: number };
+  /** Osztós feladatban egy ellenállás teljesítményét kérdezzük (1. ZH 4. feladata). */
+  askPower?: boolean;
 }
 
 export interface Problem {
@@ -183,7 +185,7 @@ function buildDraft(topic: Topic, level: Level, o: GenerateOptions, rng: Rng): D
       if (o.starDelta && sizeLevel(level) !== 'alapozo' && rng.chance(0.35)) return bridgeStarDeltaDraft(pickMode(o, rng), 'Req', rng);
       return eredoDraft(level, rng);
     case 'oszto':
-      return osztoDraft(level, rng);
+      return osztoDraft(level, rng, o.askPower);
     case 'halozat':
       return halozatDraft(level, rng);
     case 'valodi-gen':
@@ -331,7 +333,7 @@ function singleSourceSP(level: Level, rng: Rng, trick: boolean): { sketch: Sketc
   return { sketch: s, kind };
 }
 
-function osztoDraft(level: Level, rng: Rng): Draft | null {
+function osztoDraft(level: Level, rng: Rng, askPower = false): Draft | null {
   const built = singleSourceSP(level, rng, rng.chance(0.3));
   if (!built) return null;
   return {
@@ -343,6 +345,7 @@ function osztoDraft(level: Level, rng: Rng): Draft | null {
       if (rs.length === 0) return null;
       const el = rng.pick(rs);
       const r = sol.elements.get(el.id)!;
+      if (askPower) return [askElementP(circuit, el, r.P)];
       return [rng.chance(0.5) ? askElementU(circuit, el, r.U, true) : askElementI(circuit, el, r.I, true)];
     },
   };

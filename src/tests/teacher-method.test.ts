@@ -127,3 +127,37 @@ describe('1. ZH tanári formátumban (próbavizsga)', () => {
     expect(starDelta).toBe(20);
   });
 });
+
+describe('1. ZH 4. feladat: hálózat egy ellenállásának teljesítménye', () => {
+  it('P-t kérdez, redukcióval megoldható, a záró lépés P = I²R vagy U²/R, MNA-helyes', async () => {
+    const { examTasks } = await import('../tasks');
+    for (let i = 0; i < 20; i++) {
+      const p = examTasks('zh1', `P${i}`)[3]!.dc!;
+      expect(p.questions).toHaveLength(1);
+      expect(p.questions[0]!.kind).toBe('P');
+      const r = solveWith(p, 'redukcio');
+      expect(r.ok).toBe(true);
+      if (!r.ok) continue;
+      expect(r.solution.answers[0]!.value).toBeCloseTo(p.questions[0]!.answer, 8);
+      expect(r.solution.steps.at(-1)!.terms!.join(' ')).toMatch(/\^2/);
+    }
+  });
+});
+
+describe('szuperpozíció a tanár úr szerint: nagyság + irány-nyíl, összeg az első részhez képest', () => {
+  it('minden részeredményben van nyíl, az összegben + / − a nagyságokkal, és helyes', () => {
+    let n = 0;
+    for (let i = 0; i < 30; i++) {
+      const p = generateProblem({ seed: `SPA${i}`, topic: 'tanari', level: 'kozepes', teacherType: 'szuperpozicio' });
+      const r = solveWith(p, 'szuperpozicio');
+      if (!r.ok) continue;
+      n++;
+      for (const s of r.solution.steps.filter((x) => x.title === 'Részeredmény')) for (const t of s.terms!) expect(t).toMatch(/arrow\)/);
+      for (const s of r.solution.steps.filter((x) => x.title.startsWith('Összegzés'))) {
+        expect(s.subst).toMatch(/arrow\)$/);
+        expect(s.subst).not.toMatch(/-\s*\d.*\(-/); // nincs negatív nagyság zárójelben
+      }
+    }
+    expect(n).toBeGreaterThan(10);
+  });
+});

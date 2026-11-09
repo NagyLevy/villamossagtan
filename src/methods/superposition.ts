@@ -36,6 +36,16 @@ export function solveSuperposition(p: Problem): MethodResult {
   const targets = [...new Set([...targetResistors(p), ...p.questions.filter((q) => q.kind === 'Isup').map((q) => q.target!)])];
   if (targets.length === 0) return { ok: false, reason: 'Nincs olyan kérdéses ellenállás, amelynek áramát összegezni lehetne.' };
   const els = new Map(allElements(p.circuit).map((e) => [e.id, e]));
+  // A tanár úr a részáramokat nagysággal és irány-nyíllal írja (→ ← ↑ ↓), az összegben pedig az első
+  // részáram irányához képest ad össze / von ki. A referenciairány balról jobbra, illetve fentről lefelé.
+  const vertical = new Map<string, boolean>();
+  for (const br of p.circuit.branches) {
+    const a = p.circuit.points.find((q) => q.id === br.from)!;
+    const b = p.circuit.points.find((q) => q.id === br.to)!;
+    for (const e of br.elements) vertical.set(e.id, a.x === b.x);
+  }
+  const arrow = (id: string, I: number) => (vertical.get(id) ? (I >= 0 ? '\\downarrow' : '\\uparrow') : I >= 0 ? '\\rightarrow' : '\\leftarrow');
+  const withArrow = (id: string, I: number) => `${texQty(Math.abs(I), 'A')}\\;(${arrow(id, I)})`;
 
   const partials: { source: string; values: Values; derivation: Step[]; dividers: boolean; transformed: boolean }[] = [];
   for (const s of sources) {
@@ -86,9 +96,9 @@ export function solveSuperposition(p: Problem): MethodResult {
     steps.push({
       title: 'Részeredmény',
       text: part.dividers
-        ? 'A kérdéses ellenállás árama ebben a részáramkörben, a referenciairány szerinti előjellel (ha a részáram a nyíllal szemben folyik, negatív):'
+        ? 'A kérdéses ellenállás árama ebben a részáramkörben: nagysága és iránya (a nyíl mutatja, merre folyik a részáram):'
         : 'A kérdéses ellenállás árama ebben a részáramkörben (a végpontjai potenciáljából, Ohm törvényével):',
-      terms: targets.map((t, i) => `${sym('I', t, k)} = ${texQty(part.values.get(t)?.I ?? 0, 'A')}${i < targets.length - 1 ? ',\\quad' : ''}`),
+      terms: targets.map((t, i) => `${sym('I', t, k)} = ${withArrow(t, part.values.get(t)?.I ?? 0)}${i < targets.length - 1 ? ',\\quad' : ''}`),
       highlight: { elements: [part.source, ...targets], killed, arrows: targets.map((t) => ({ element: t, kind: 'I' as const, value: part.values.get(t)?.I ?? 0 })) },
       group,
     });
@@ -99,12 +109,14 @@ export function solveSuperposition(p: Problem): MethodResult {
     const I = partials.reduce((s, part) => s + (part.values.get(t)?.I ?? 0), 0);
     const R = els.get(t)!.value;
     values.set(t, { U: R * I, I });
+    const d0 = (partials[0]!.values.get(t)?.I ?? 0) >= 0 ? 1 : -1;
+    const sgn = (x: number) => x * d0 >= 0;
     steps.push({
       title: `Összegzés: ${t}`,
       group: 'Összegzés',
-      text: 'A részáramok előjelhelyes összege adja a valódi áramot (mindegyik ugyanabban a referenciairányban).',
-      terms: [`${texOf('I', t)} =`, partials.map((_, k) => sym('I', t, k)).join(' + ')],
-      subst: `${texOf('I', t)} = ${partials.map((part) => texQty(part.values.get(t)?.I ?? 0, 'A', { paren: true })).join(' + ')}`,
+      text: `Az első részáram irányához (${vertical.get(t) ? (d0 > 0 ? '↓' : '↑') : d0 > 0 ? '→' : '←'}) képest: ami vele egyező irányú, azt hozzáadjuk, ami ellentétes, azt kivonjuk. Az eredmény iránya: ${I * d0 >= 0 ? 'az első részáraméval egyező' : 'azzal ellentétes'}.`,
+      terms: [`${texOf('I', t)} =`, partials.map((part, k) => `${k === 0 ? '' : sgn(part.values.get(t)?.I ?? 0) ? ' + ' : ' - '}${sym('I', t, k)}`).join('')],
+      subst: `${texOf('I', t)} = ${partials.map((part, k) => `${k === 0 ? '' : sgn(part.values.get(t)?.I ?? 0) ? ' + ' : ' - '}${texQty(Math.abs(part.values.get(t)?.I ?? 0), 'A')}`).join('')} = ${withArrow(t, I)}`,
       result: { symbol: texOf('I', t), value: I, unit: 'A' },
       highlight: { elements: [t], arrows: [{ element: t, kind: 'I', value: I }] },
     });
