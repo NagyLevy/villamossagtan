@@ -172,7 +172,8 @@ export function solveLoopCurrent(p: Problem): MethodResult {
         text: 'Körbejárjuk a hurkot, és minden feszültséget a bal oldalra írunk; az összegük nulla. Amelyik feszültség nyila egyezik a körüljárással, az +, amelyiké szembe megy, az −. Az ellenállás feszültsége R · (a rajta átfolyó hurokáramok előjeles összege); ahol ismert hurok is átmegy rajta, annak az árama számként kerül be. Tagonként:',
         bullets,
         terms: [...lhsTerms, '= 0'],
-        subst: zeroForm(coeffs, names, rhs),
+        // A tanár úr minden egyenlet elé odaírja, melyik hurokhoz tartozik: „J₁ :) 6J₁ − 1 = 0”.
+        subst: `J_{${u.unknown}}\\,\\text{:)}\\quad ${zeroForm(coeffs, names, rhs)}`,
         highlight: { loops: [loopRef(u), ...known.filter((l) => l.elements.some((x) => u.elements.some((y) => y.id === x.id))).map(loopRef)] },
       },
     });

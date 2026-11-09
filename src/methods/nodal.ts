@@ -236,7 +236,8 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
             : `Kirchhoff csomóponti törvénye a ${phTxt(grp[0]!)} pontra. Minden ágat úgy írunk fel, mintha az áram (és a feszültség) a csomópontból kifelé menne: (${phTxt(grp[0]!)} − a túlsó vég potenciálja) / R, és ezeket összeadjuk; az összeg nulla. `) + 'Minden kapcsolódó ágra felírjuk, mennyi áram folyik ki rajta:',
         bullets,
         terms: [...terms, '= 0'],
-        subst: scaledOk ? `${numeric} \\quad\\Big|\\cdot ${L} \\quad\\Rightarrow\\quad ${collected}` : `${numeric} \\quad\\Rightarrow\\quad ${collected}`,
+        // Címke a tanár úr szerint: „Φ1 :) …”.
+        subst: `${grp.length === 1 ? `${ph(grp[0]!)}\\,\\text{:)}\\quad ` : ''}${scaledOk ? `${numeric} \\quad\\Big|\\cdot ${L} \\quad\\Rightarrow\\quad ${collected}` : `${numeric} \\quad\\Rightarrow\\quad ${collected}`}`,
         note: scaledOk ? `A törtek eltüntetéséhez az egyenlet mindkét oldalát beszorozzuk a nevezők legkisebb közös többszörösével (${L}), így egész együtthatók maradnak. A megoldás ettől nem változik.` : undefined,
         highlight: H({ nodes: dn(grp), nodeLabels, elements: shown(cut.flatMap((q) => q.elems.map((e) => e.id))) }),
         group: opts.group,

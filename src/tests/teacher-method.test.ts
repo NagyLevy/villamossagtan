@@ -202,3 +202,22 @@ describe('módszerválasztás: recommendMethod a tanár úr döntési sorrendjé
     expect(counts.szuperpozicio ?? 0).toBeGreaterThan(0);
   });
 });
+
+describe('a tanár úr írásmódja a levezetésben (ZH 2020/2021 megoldásai alapján)', () => {
+  it('egyenletcímke „J₁ :)”, „φ₁ :)”; ágáram hurokáramokból; Uü részei nagysággal és iránnyal; tizedesvessző', () => {
+    for (let i = 0; i < 15; i++) {
+      const h = solveWith(generateProblem({ seed: `STY${i}`, topic: 'tanari', level: 'kozepes', teacherType: 'hurokaram' }), 'hurokaram');
+      if (h.ok) for (const s of h.solution.steps.filter((x) => x.title.startsWith('Huroktörvény'))) expect(s.subst!.startsWith('J_{') && s.subst!.includes('\\text{:)}')).toBe(true);
+      const c = solveWith(generateProblem({ seed: `STY${i}`, topic: 'tanari', level: 'kozepes', teacherType: 'csomoponti' }), 'csomoponti');
+      if (c.ok) for (const s of c.solution.steps.filter((x) => x.title.startsWith('Csomóponti egyenlet'))) expect(s.subst!.startsWith('\\varphi_{') && s.subst!.includes('\\text{:)}')).toBe(true);
+      const t = solveWith(generateProblem({ seed: `STY${i}`, topic: 'tanari', level: 'kozepes', teacherType: 'thevenin' }), 'thevenin');
+      if (t.ok) {
+        for (const s of t.solution.steps.filter((x) => x.title.startsWith('Részfeszültség') && x.subst)) expect(s.subst!.endsWith('A \\to B)') || s.subst!.endsWith('B \\to A)')).toBe(true);
+        const sum = t.solution.steps.find((x) => x.title === 'Összegzés');
+        if (sum) expect(sum.subst).not.toMatch(/\(-/);
+      }
+      const all = JSON.stringify([h, c, t]);
+      expect(/\d\.\d+\\\\,\\\\text/.test(all)).toBe(false); // nincs tizedespont a megjelenített számokban
+    }
+  });
+});

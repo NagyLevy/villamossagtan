@@ -396,7 +396,7 @@ function openVoltageByDividers(
           ? 'A két pont azonos potenciálon van.'
           : `Az eredmény ${U > 0 ? 'pozitív: A van a nagyobb potenciálon, a feszültség nyila A-tól B felé mutat (A→B)' : 'negatív: B van a nagyobb potenciálon, a feszültség nyila B-től A felé mutat (B→A)'}.`),
       terms: [`${Usym} = ${shownPath.map((x, i) => `${x.sign * Ue(x.id) < 0 ? '-' : i ? '+' : ''} ${sym(x.id)}`).join(' ') || '0'}`],
-      subst: shownPath.length ? `${Usym} = ${shownPath.map((x, i) => `${x.sign * Ue(x.id) < 0 ? '-' : i ? '+' : ''} ${texQty(Math.abs(Ue(x.id)), 'V')}`).join(' ')}` : undefined,
+      subst: shownPath.length ? `${Usym} = ${shownPath.map((x, i) => `${x.sign * Ue(x.id) < 0 ? '-' : i ? '+' : ''} ${texQty(Math.abs(Ue(x.id)), 'V')}`).join(' ')}${multi && Math.abs(U) > 1e-12 ? `${shownPath.length > 1 ? ` = ${texQty(Math.abs(U), 'V')}` : ''}\\;(${U > 0 ? 'A \\to B' : 'B \\to A'})` : ''}` : undefined,
       result: { symbol: Usym, value: U, unit: 'V' },
       highlight: { killed: marks, terminals: true, elements: path.map((x) => x.id) },
       note: multi && Math.abs(U) > 1e-12 ? `U${primeTxt} = ${formatQuantity(Math.abs(U), 'V')} (${U > 0 ? 'A→B' : 'B→A'})` : undefined,
@@ -408,7 +408,7 @@ function openVoltageByDividers(
     steps.push({
       title: 'Összegzés',
       text: 'A részfeszültségek előjeles összege az üresjárási feszültség: ami A→B irányú, az +, ami B→A, az −.',
-      terms: [`U_{\\text{ü}} = ${parts.map((_, k) => `U${PRIMES[k] ?? `^{(${k + 1})}`}_{AB}`).join(' + ')}`],
+      terms: [`U_{\\text{ü}} = ${parts.map((v, k) => `${v < 0 ? '-' : k ? '+' : ''} U${PRIMES[k] ?? `^{(${k + 1})}`}_{AB}`).join(' ')}`],
       subst: `U_{\\text{ü}} = ${parts.map((v, i) => `${v < 0 ? '-' : i ? '+' : ''} ${texQty(Math.abs(v), 'V')}`).join(' ')}`,
       result: { symbol: 'U_{\\text{ü}}', value: U, unit: 'V' },
       highlight: { killed: [ctx.loadOpen], terminals: true },
