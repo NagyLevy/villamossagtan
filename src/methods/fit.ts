@@ -80,3 +80,38 @@ export function methodFit(m: MethodId, p: Problem, relaxed = false): Fit {
     }
   }
 }
+
+/**
+ * A tanár úr döntési sorrendje (vault: analyses/modszervalasztas): a legkevesebb munkával járó, tananyagbeli módszer.
+ *  - előírt típus (tanári gyakorlófeladat) → az;
+ *  - csak eredő a kérdés, vagy egy forrás → redukció (osztólánc egy képletben); híd esetén csillag-delta;
+ *  - kapocspárra vonatkozó kérdés (Thevenin-téma) → Thevenin/Norton;
+ *  - több forrás: ha hurokárammal vagy csomópontival 0 egyenlet kell („számolás nélkül”), az; ha a szuperpozíció
+ *    minden része osztókkal megy és a másik kettő legalább 2 egyenlet, szuperpozíció; különben a kevesebb egyenletes,
+ *    döntetlennél hurokáram (a ZH 2. feladatán a tanár úr azt használja).
+ */
+export function recommendMethod(p: Problem): { method: MethodId; why: string } {
+  const usable = applicableMethods(p);
+  const has = (m: MethodId) => usable.includes(m);
+  if (p.topic === 'tanari' && p.teacherType && has(p.teacherType)) return { method: p.teacherType, why: TEACHER_WHY[p.teacherType] ?? '' };
+  if (p.topic === 'kirchhoff' && has('kirchhoff')) return { method: 'kirchhoff', why: 'Egyetlen csomóponti vagy huroktörvény elég hozzá.' };
+  if (p.topic === 'thevenin' && has('thevenin')) return { method: 'thevenin', why: 'Kapocspárra vonatkozó kérdés: először Rb (Rg), aztán az üresjárási feszültség.' };
+  const sources = p.stats.sources;
+  if (sources <= 1) {
+    if (has('redukcio')) return { method: 'redukcio', why: 'Egy forrás, soros-párhuzamos hálózat: eredő, aztán osztók, egy képletben.' };
+    if (has('csillag-delta')) return { method: 'csillag-delta', why: 'Híd: csillag-delta átalakítás, utána eredő és osztók.' };
+  }
+  const h = has('hurokaram') ? systemSize(solveWith(p, 'hurokaram')) : Infinity;
+  const c = has('csomoponti') ? systemSize(solveWith(p, 'csomoponti')) : Infinity;
+  if (Math.min(h, c) === 0)
+    return h === 0
+      ? { method: 'hurokaram', why: 'Vegyük észre: a keresett ágon csak ismert hurokáramok folynak, egyenlet sem kell.' }
+      : { method: 'csomoponti', why: 'A feszültségforrások megadják a szükséges potenciálokat: számolás nélkül megoldható.' };
+  if (has('szuperpozicio') && superpositionByDividers(p) && Math.min(h, c) >= 2)
+    return { method: 'szuperpozicio', why: `Minden részáramkör osztókkal megy; hurokárammal ${eq(h)}, csomóponti potenciállal ${eq(c)} lenne.` };
+  if (h !== Infinity || c !== Infinity)
+    return c < h
+      ? { method: 'csomoponti', why: `Csomóponti potenciállal ${eq(c)}, hurokárammal ${eq(h)}: ez a rövidebb.` }
+      : { method: 'hurokaram', why: h < c ? `Hurokárammal ${eq(h)}, csomóponti potenciállal ${eq(c)}: ez a rövidebb.` : `Mindkét módszerrel ${eq(h)}: a tanár úr ilyenkor hurokárammal számol.` };
+  return { method: usable[0] ?? 'redukcio', why: '' };
+}

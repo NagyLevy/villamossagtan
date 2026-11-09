@@ -4,7 +4,7 @@
 
 import katex from 'katex';
 import { applicableMethods, solveWith, type Solution } from '../methods';
-import { methodFit } from '../methods/fit';
+import { methodFit, recommendMethod } from '../methods/fit';
 import { checkCell, tableTargets, verify, type CellKey, type TableTarget } from '../methods/check';
 import { computeLayout, type Layout } from '../render/layout';
 import { flowSegments, stateCurrents } from '../render/flow';
@@ -269,7 +269,7 @@ export class TaskViewer {
     this.reason = '';
     if (t.dc) {
       const usable = applicableMethods(t.dc);
-      if (!this.lockedMethod && !usable.includes(this.method) && usable.length) this.method = this.sdOn() && usable.includes('csillag-delta') ? 'csillag-delta' : usable[0]!;
+      if (!this.lockedMethod && !usable.includes(this.method) && usable.length) this.method = this.sdOn() && usable.includes('csillag-delta') ? 'csillag-delta' : recommendMethod(t.dc).method;
       const s = this.hooks.settings();
       const prefer = s.starDeltaMode === 'veletlen' ? undefined : s.starDeltaMode;
       const r = solveWith(t.dc, this.method, { reverse: this.reverse, prefer });
@@ -747,7 +747,8 @@ export class TaskViewer {
       layer.classList.add('ov-in');
     }
     // Áramlás-animáció csak egyenáramú feladatnál (szinuszosnál az irány időben változik).
-    if (this.shownCircuit && this.layout && t.domain === 'dc') this.flow.set(flowSegments(this.shownCircuit, this.layout, stateCurrents(this.shownCircuit, hl)));
+    // Hurkok kijelölésekor csak a hurkok körüljárása látszik: az áramlás pöttyei ott zavarnák.
+    if (this.shownCircuit && this.layout && t.domain === 'dc' && !hl?.loops?.length) this.flow.set(flowSegments(this.shownCircuit, this.layout, stateCurrents(this.shownCircuit, hl)));
     else this.flow.set([]);
     // A nézet mindig a teljes ábra: nincs nagyítás és ugráló kamera.
     const vb = this.layout!.viewBox;

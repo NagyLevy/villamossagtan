@@ -48,7 +48,11 @@ export interface LoopGeometry {
 }
 
 /** A hurok rajzolható alakja: az elemek ágai, a köztük futó vezetékek és a körüljárás iránya. */
-export function loopGeometry(ctx: OverlayContext, loop: LoopRef): LoopGeometry | null {
+/**
+ * @param avoid A már elhelyezett hurokfeliratok középpontjai: átfedő hurkoknál (két ablak közös körvonala) a
+ *   feliratok így nem kerülnek egy pontra.
+ */
+export function loopGeometry(ctx: OverlayContext, loop: LoopRef, avoid: Pt[] = []): LoopGeometry | null {
   const px = toPx(ctx.circuit);
   const { circuit, layout } = ctx;
   const branchOf = new Map<string, (typeof circuit.branches)[number]>();
@@ -135,9 +139,66 @@ export function loopGeometry(ctx: OverlayContext, loop: LoopRef): LoopGeometry |
   }
   const xs = poly.map((p) => p.x);
   const ys = poly.map((p) => p.y);
-  const center = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+  // A felirat a hurok területének súlypontjába kerül: átlóval kettévágott ablaknál (két háromszög) így az egyik
+  // felirat fent, a másik lent van, nem a közös befoglaló téglalap közepén, egymásra csúszva az átlón.
+  const bboxCenter = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i]!;
+    const q = poly[(i + 1) % poly.length]!;
+    const cr = p.x * q.y - q.x * p.y;
+    cx += (p.x + q.x) * cr;
+    cy += (p.y + q.y) * cr;
+  }
+  const centroid = Math.abs(area) > 1e-6 ? { x: cx / (3 * area), y: cy / (3 * area) } : bboxCenter;
+  const start = insidePoly(centroid, poly) ? centroid : bboxCenter;
+  // A hurok belsejében az a pont, amelyik a legmesszebb van a hurok vonalától és a rajz elemeitől, felirataitól
+  // (így a körüljárás-nyíl nem takar ki egy ellenállást vagy annak értékét). Döntetlennél a súlyponthoz közelebbi.
+  const obstacles = layout.elements.flatMap((g) => [g.body, g.label.box, ...(g.arrow ? [g.arrow.box] : [])]);
+  const boxDist = (p: Pt, b: Box) => Math.hypot(Math.max(b.x1 - p.x, 0, p.x - b.x2), Math.max(b.y1 - p.y, 0, p.y - b.y2));
+  const segDist = (p: Pt, a: Pt, b: Pt) => {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L)) : 0;
+    return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+  };
+  const clearance = (p: Pt) => {
+    let d = Infinity;
+    for (let i = 0; i < poly.length; i++) d = Math.min(d, segDist(p, poly[i]!, poly[(i + 1) % poly.length]!));
+    for (const b of obstacles) d = Math.min(d, boxDist(p, b));
+    // Egy másik hurok nyílköre (r = 16) körül is kell hely.
+    for (const q of avoid) d = Math.min(d, Math.max(0, Math.hypot(p.x - q.x, p.y - q.y) - 20));
+    return d;
+  };
+  let center = start;
+  let best = clearance(start);
+  const [X1, X2, Y1, Y2] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const N = 24;
+  for (let i = 1; i < N; i++)
+    for (let j = 1; j < N; j++) {
+      const p = { x: X1 + ((X2 - X1) * i) / N, y: Y1 + ((Y2 - Y1) * j) / N };
+      if (!insidePoly(p, poly)) continue;
+      const c = clearance(p);
+      // Csak érdemi javulásért mozdulunk el a súlypontból (≥ 4 px), és a nyíl köréhez (r = 16) elég hely kell.
+      if (c > best + 4 || (Math.abs(c - best) <= 4 && best < 22 && c > best && Math.hypot(p.x - start.x, p.y - start.y) < Math.hypot(center.x - start.x, center.y - start.y) + 1)) {
+        best = c;
+        center = p;
+      }
+    }
   const segments = [...used].map((b) => ({ a: px.get(b.from)!, b: px.get(b.to)! }));
   return { segments, center, clockwise: area > 0, poly };
+}
+
+function insidePoly(pt: Pt, poly: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]!;
+    const b = poly[j]!;
+    if (a.y > pt.y !== b.y > pt.y && pt.x < ((b.x - a.x) * (pt.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
 }
 
 /** Egy netlista-csomópont rajzolható részei: rácspontok, belső pontok és az őket összekötő vezetékek. */
@@ -185,8 +246,17 @@ function groupSvg(ctx: OverlayContext, g: GroupRef): { under: string; over: stri
   };
 }
 
-function loopSvg(ctx: OverlayContext, loop: LoopRef): { under: string; over: string } {
-  const geo = loopGeometry(ctx, loop);
+/** A hurkok geometriája sorban, hogy a feliratok ne essenek egymásra. */
+export function loopGeometries(ctx: OverlayContext, loops: LoopRef[]): (LoopGeometry | null)[] {
+  const placed: Pt[] = [];
+  return loops.map((l) => {
+    const g = loopGeometry(ctx, l, placed);
+    if (g) placed.push(g.center);
+    return g;
+  });
+}
+
+function loopSvg(loop: LoopRef, geo: LoopGeometry | null): { under: string; over: string } {
   if (!geo) return { under: '', over: '' };
   const d = geo.segments.map((s) => `M${f(s.a.x)} ${f(s.a.y)}L${f(s.b.x)} ${f(s.b.y)}`).join('');
   const r = 16;
@@ -203,9 +273,8 @@ function loopSvg(ctx: OverlayContext, loop: LoopRef): { under: string; over: str
   const h2 = { x: e.x - tangent.x * 7 - -tangent.y * 4, y: e.y - tangent.y * 7 - tangent.x * 4 };
   return {
     under:
-      `<path class="ov-loop-path" d="${d}" fill="none" stroke="var(--loop)" stroke-opacity="0.18" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>` +
-      // Körbefutó pontsor a körüljárás irányában.
-      `<path class="ov-loop-march" d="M${geo.poly.map((q) => `${f(q.x)} ${f(q.y)}`).join('L')}Z" fill="none" stroke="var(--loop)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="0.1 16"/>`,
+      // Csak a hurok sávja és a körüljárás nyila: a vonalon futó pontsor áramlásnak tűnt, zavaró volt (Levi, 11-09).
+      `<path class="ov-loop-path" d="${d}" fill="none" stroke="var(--loop)" stroke-opacity="0.18" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>`,
     over: `<g class="ov-loop-arrow" style="transform-origin:${f(x)}px ${f(y)}px"><path d="M${f(s.x)} ${f(s.y)}A${r} ${r} 0 1 ${sweep} ${f(e.x)} ${f(e.y)}" fill="none" stroke="var(--loop)" stroke-width="1.8" stroke-linecap="round"/><path d="M${f(h1.x)} ${f(h1.y)}L${f(e.x)} ${f(e.y)}L${f(h2.x)} ${f(h2.y)}" fill="none" stroke="var(--loop)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>${loop.label ? `<text x="${f(x)}" y="${f(y + 4)}" text-anchor="middle" fill="var(--loop)" font-size="11" font-weight="600">${esc(loop.label)}</text>` : ''}</g>`,
   };
 }
@@ -311,7 +380,7 @@ function terminalsSvg(ctx: OverlayContext): string {
 }
 
 export function overlaySvg(ctx: OverlayContext, h: Highlight): { under: string; over: string } {
-  const parts = [...(h.groups ?? []).map((g) => groupSvg(ctx, g)), ...(h.loops ?? []).map((l) => loopSvg(ctx, l)), ...(h.nodes ?? []).map((n) => nodeSvg(ctx, n))];
+  const parts = [...(h.groups ?? []).map((g) => groupSvg(ctx, g)), ...((ls) => { const gs = loopGeometries(ctx, ls); return ls.map((l, i) => loopSvg(l, gs[i]!)); })(h.loops ?? []), ...(h.nodes ?? []).map((n) => nodeSvg(ctx, n))];
   return {
     under: parts.map((p) => p.under).join(''),
     over:

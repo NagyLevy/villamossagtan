@@ -161,3 +161,44 @@ describe('szuperpozíció a tanár úr szerint: nagyság + irány-nyíl, összeg
     expect(n).toBeGreaterThan(10);
   });
 });
+
+describe('ZH 2020-10-12 A / 4: P9Ω = 0,205² · 9 = 378,7 mW (I²R, mert áramforrás)', () => {
+  it('a redukció ugyanazt adja, I²·R alakban', () => {
+    const net: Netlist = {
+      nodeCount: 5,
+      elements: [
+        { id: 'Ig1', kind: 'I', value: 2, a: 0, b: 1 },
+        R('R2', 2, 1, 0), R('R9', 9, 1, 2), R('R14', 5, 2, 3), R('R7', 7, 3, 0), R('R3', 3, 3, 4), R('R4', 4, 4, 0),
+      ],
+    };
+    const st = chainStepOf(net, 'R9');
+    expect(st.result!.value).toBeCloseTo(0.2051, 4); // I9 = 2 · 2/(2 + (14 + 7 × 7))
+    const I = Math.abs(solve(net)!.elements.get('R9')!.I);
+    expect(I * I * 9).toBeCloseTo(0.3787, 4);
+  });
+});
+
+describe('módszerválasztás: recommendMethod a tanár úr döntési sorrendjével', () => {
+  it('egy forrás → redukció; tanári típus → a sajátja; több forrás → a legkevesebb egyenlet, és mindig megoldja', async () => {
+    const { recommendMethod, systemSize } = await import('../methods/fit');
+    const counts: Record<string, number> = {};
+    for (const [topic, level] of [['oszto', 'nehez'], ['eredo', 'kozepes'], ['tobbforras', 'kozepes'], ['tobbforras', 'nehez'], ['tanari', 'kozepes'], ['thevenin', 'kozepes']] as const)
+      for (let i = 0; i < 25; i++) {
+        const p = generateProblem({ seed: `RM${topic}${i}`, topic, level });
+        const { method } = recommendMethod(p);
+        counts[method] = (counts[method] ?? 0) + 1;
+        const r = solveWith(p, method);
+        expect(r.ok, `${topic} ${i} ${method}`).toBe(true);
+        if (topic === 'oszto' || topic === 'eredo') expect(['redukcio', 'csillag-delta']).toContain(method);
+        if (topic === 'tanari') expect(method).toBe(p.teacherType);
+        if (topic === 'tobbforras' && (method === 'hurokaram' || method === 'csomoponti')) {
+          const h = systemSize(solveWith(p, 'hurokaram'));
+          const c = systemSize(solveWith(p, 'csomoponti'));
+          expect(systemSize(r)).toBe(Math.min(h, c)); // soha nem a hosszabb
+        }
+        if (r.ok) for (const a of r.solution.answers) expect(a.value).toBeCloseTo(p.questions.find((q) => q.id === a.questionId)!.answer, 8);
+      }
+    console.log('Javasolt módszerek:', JSON.stringify(counts));
+    expect(counts.szuperpozicio ?? 0).toBeGreaterThan(0);
+  });
+});

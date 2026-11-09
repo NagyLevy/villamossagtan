@@ -7,7 +7,7 @@ import { randomSeed } from '../generator/rng';
 import type { Level } from '../generator/values';
 import type { AcLevel, AcTopic } from '../ac/problems';
 import { applicableMethods, solveWith } from '../methods';
-import { methodFit } from '../methods/fit';
+import { methodFit, recommendMethod } from '../methods/fit';
 import { dailyProblem } from '../daily/problem';
 import { DAILY_LEVELS, dailyChallenge, dayKey, msUntilNext, type DailyLevel } from '../daily/schedule';
 import { isDone, loadProgress, markDone, streak } from '../daily/progress';
@@ -415,10 +415,8 @@ export function startApp(root: HTMLElement): void {
 
   /** Egyenáramú feladathoz a legkézenfekvőbb módszer (próbavizsgában ezzel mutatjuk a megoldást). */
   const bestMethod = (t: Task): MethodId => {
-    const usable = applicableMethods(t.dc!);
-    const order: MethodId[] = ['redukcio', 'thevenin', 'hurokaram', 'csomoponti', 'szuperpozicio', 'kirchhoff', 'csillag-delta'];
-    const fit = order.find((m) => usable.includes(m) && methodFit(m, t.dc!, false).ok);
-    return fit ?? order.find((m) => usable.includes(m)) ?? 'redukcio';
+    // A tanár úr döntési sorrendje szerint a legkevesebb munkával járó módszer.
+    return recommendMethod(t.dc!).method;
   };
 
   // ───────── Napi feladatok ─────────
