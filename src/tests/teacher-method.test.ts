@@ -305,3 +305,87 @@ describe('Vizsga 2021-01-11 / 3 (a tanár úr megoldása, delta-csillag után)',
     expect(best).toBeLessThan(0.01); // az egyik irányítással pontosan a tanár úr 0,39 V-ja jön ki (U″ − U′)
   });
 });
+
+describe('Vizsga 2021-01-18 / 1, a PDF-ábra pontos kapcsolásával', () => {
+  it('„A 0,5 Ω-os ellenállás feszültsége a rá közvetlenül csatlakozó feszültségforrás miatt pontosan 2 V”: I = 4 A, egyenletrendszer nélkül', async () => {
+    const { Sketch, makeElement } = await import('../generator/sketch');
+    const { toNetlist: tn } = await import('../solver/netlist');
+    const { askElementI } = await import('../generator/questions');
+    const { recommendMethod, systemSize } = await import('../methods/fit');
+    const s = new Sketch();
+    const r = (v: number) => makeElement('R', v);
+    // Rács: x = 0, 2, 4; y = 0, 2, 4 (fent, közép, lent), ahogy a vizsgalap 1. ábráján.
+    s.branch(0, 0, 2, 0, [r(1)]);
+    s.branch(2, 0, 4, 0, [r(1)]);
+    s.branch(0, 0, 0, 2, [makeElement('I', 1, 1)]); // 1 A, nyíl lefelé
+    s.branch(2, 0, 2, 2, [r(1)]);
+    s.branch(4, 0, 4, 2, [r(1)]);
+    s.branch(0, 2, 2, 2, [r(1)]);
+    s.branch(2, 2, 4, 2, [makeElement('V', 1, 1)]); // 1 V, nyíl balra: a jobb oldal a magasabb
+    s.branch(0, 2, 0, 4, [makeElement('I', 1, -1)]); // 1 A, nyíl felfelé
+    s.branch(2, 2, 2, 4, [makeElement('V', 1, -1)]); // 1 V, nyíl lefelé: a felső vég a magasabb
+    const half = makeElement('R', 0.5);
+    s.branch(4, 2, 4, 4, [half]);
+    s.branch(0, 4, 2, 4, [r(1)]);
+    s.branch(2, 4, 4, 4);
+    const circuit = s.build();
+    const map = tn(circuit);
+    const el = circuit.branches.flatMap((b) => b.elements).find((e) => e.kind === 'R' && e.value === 0.5)!;
+    const sol = solve(map.net)!;
+    expect(Math.abs(sol.elements.get(el.id)!.I)).toBeCloseTo(4, 9);
+    const p = {
+      seed: 'V20210118', topic: 'tobbforras', level: 'kozepes', topology: 'egyedi', circuit,
+      questions: [askElementI(circuit, el, sol.elements.get(el.id)!.I, true)],
+      stats: { meshes: 0, resistors: 7, sources: 4 }, attempts: 1,
+    } as unknown as Parameters<typeof solveWith>[0];
+    const rec = recommendMethod(p);
+    const r2 = solveWith(p, rec.method);
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.solution.answers[0]!.value).toBeCloseTo(4, 9);
+    expect(systemSize(r2)).toBe(0); // a tanár úr: egyenletrendszer nélkül
+  });
+});
+
+describe('Vizsga 2021-01-18 / 2, a PDF-ábra pontos kapcsolásával', () => {
+  it('a tanár úr: hurokáram, 3 ismert hurok, egyetlen egyenlet „J1 :) …”, I = 0,8571 A; az app ugyanezt választja', async () => {
+    const { Sketch, makeElement } = await import('../generator/sketch');
+    const { toNetlist: tn } = await import('../solver/netlist');
+    const { askElementI } = await import('../generator/questions');
+    const { recommendMethod, systemSize } = await import('../methods/fit');
+    const s = new Sketch();
+    const r = (v: number) => makeElement('R', v);
+    s.branch(0, 0, 2, 0, [r(1)]);
+    s.branch(2, 0, 4, 0, [r(1)]);
+    s.branch(0, 0, 0, 2, [makeElement('I', 1, 1)]); // 1 A, nyíl lefelé
+    s.branch(2, 0, 2, 2, [r(1)]);
+    s.branch(4, 0, 4, 2, [r(1)]);
+    s.branch(0, 2, 2, 2, [r(1)]);
+    s.branch(2, 2, 4, 2, [makeElement('I', 1, -1)]); // 1 A, nyíl balra
+    s.branch(0, 2, 0, 4, [makeElement('I', 1, -1)]); // 1 A, nyíl felfelé
+    s.branch(2, 2, 2, 4, [makeElement('V', 1, -1)]); // 1 V, nyíl lefelé
+    s.branch(4, 2, 4, 4, [makeElement('R', 0.5)]);
+    s.branch(0, 4, 2, 4, [r(1)]);
+    s.branch(2, 4, 4, 4);
+    const circuit = s.build();
+    const map = tn(circuit);
+    const el = circuit.branches.flatMap((b) => b.elements).find((e) => e.kind === 'R' && e.value === 0.5)!;
+    const sol = solve(map.net)!;
+    expect(Math.abs(sol.elements.get(el.id)!.I)).toBeCloseTo(0.8571, 4);
+    const p = {
+      seed: 'V20210118b', topic: 'tobbforras', level: 'kozepes', topology: 'egyedi', circuit,
+      questions: [askElementI(circuit, el, sol.elements.get(el.id)!.I, true)],
+      stats: { meshes: 0, resistors: 7, sources: 4 }, attempts: 1,
+    } as unknown as Parameters<typeof solveWith>[0];
+    const h = solveWith(p, 'hurokaram');
+    expect(h.ok).toBe(true);
+    if (!h.ok) return;
+    expect(h.solution.answers[0]!.value).toBeCloseTo(0.8571, 4);
+    const eqs = h.solution.steps.filter((x) => x.title.startsWith('Huroktörvény'));
+    expect(eqs).toHaveLength(1); // a tanár úr is egyetlen egyenletet ír fel
+    expect(eqs[0]!.subst!.startsWith('J_{1}')).toBe(true);
+    expect(recommendMethod(p).method).toBe('hurokaram');
+    expect(systemSize(h)).toBeLessThanOrEqual(1);
+    console.log('2021-01-18/2 app-egyenlet:', eqs[0]!.subst);
+  });
+});
