@@ -12,6 +12,8 @@ import { toNetlist } from '../solver/netlist';
 import { formatQuantity, type Unit } from '../units';
 import { texElement, texNum, texOf, texQty } from './tex';
 import { redrawSequence } from './redraw';
+import { ePlain, eTex } from './tex';
+export { ePlain, eTex };
 import { transformAndReduce } from './stardelta';
 import type { GroupRef, Highlight, MethodResult, Step, TableRow } from './types';
 
@@ -36,13 +38,14 @@ export interface Reduction {
 }
 
 /** Ellenállás jele LaTeX-ben. */
+
 export function rSym(e: Edge): string {
-  return e.kind === 'leaf' ? texElement(e.key) : `R_{${e.key}}`;
+  return e.kind === 'leaf' ? texElement(e.key) : `R_{${eTex(e.key)}}`;
 }
 
 /** Feszültség / áram jele: U_{R3}, I_{e2}. */
 export function qSym(q: 'U' | 'I', e: Edge): string {
-  return e.kind === 'leaf' ? texOf(q, e.key) : `${q}_{${e.key}}`;
+  return e.kind === 'leaf' ? texOf(q, e.key) : `${q}_{${eTex(e.key)}}`;
 }
 
 /**
@@ -268,16 +271,16 @@ export function findPath(root: Edge, leafId: string): Edge[] {
 }
 
 export function groupOf(e: Edge, tone: GroupRef['tone']): GroupRef {
-  return { elements: e.leaves, label: `${e.kind === 'leaf' ? e.key : `R${e.key}`} = ${texFree(e.R, 'Ω')}`, tone };
+  return { elements: e.leaves, label: `${e.kind === 'leaf' ? e.key : `R${ePlain(e.key)}`} = ${texFree(e.R, 'Ω')}`, tone };
 }
 
 function texFree(x: number, unit: Unit): string {
   return formatQuantity(x, unit);
 }
 
-/** Eredő vagy elem neve sima szövegben: R3, Re2. */
+/** Eredő vagy elem neve sima szövegben: R3, Re″. */
 function plain(e: Edge): string {
-  return e.kind === 'leaf' ? e.key : `R${e.key}`;
+  return e.kind === 'leaf' ? e.key : `R${ePlain(e.key)}`;
 }
 
 /**
@@ -300,7 +303,7 @@ export function reductionSteps(red: Reduction, base?: Circuit, extra: Highlight 
       : e.children.length === 2
         ? `${rSym(e)} = \\frac{${values[0]} \\cdot ${values[1]}}{${values[0]} + ${values[1]}}`
         : `\\frac{1}{${rSym(e)}} = ${values.map((v) => `\\frac{1}{${v}}`).join(' + ')}`;
-    const names = e.children.map((c) => (c.edge.kind === 'leaf' ? c.edge.key : `R${c.edge.key}`)).join(', ');
+    const names = e.children.map((c) => (c.edge.kind === 'leaf' ? c.edge.key : `R${ePlain(c.edge.key)}`)).join(', ');
     return {
       title: series ? 'Soros összevonás' : 'Párhuzamos összevonás',
       text: series
@@ -318,7 +321,7 @@ export function reductionSteps(red: Reduction, base?: Circuit, extra: Highlight 
   });
 }
 
-/** Az újrarajzolt áramkör kiemeléssel: az új eredő ellenállás (a felirata az elemen: "Re1 = 6 Ω"). */
+/** Az újrarajzolt áramkör kiemeléssel: az új eredő ellenállás (a felirata az elemen: "Re′ = 6 Ω"). */
 function redrawOf(d: { circuit: Circuit; keep: string }, e: Edge, extra: Highlight): NonNullable<Step['redraw']> {
   return { circuit: d.circuit, highlight: { ...extra, elements: [d.keep] }, kind: e.kind === 'parallel' ? 'parallel' : 'series' };
 }

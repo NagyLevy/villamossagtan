@@ -1,7 +1,8 @@
 // "Áramkör újrarajzolása": minden összevonás után egyszerűsített rajz. Soros összevonásnál az első
-// ellenállás marad (az eredő értékével, Re1 néven), a többi helyén vezeték lesz; párhuzamosnál az
+// ellenállás marad (az eredő értékével, Re′ néven), a többi helyén vezeték lesz; párhuzamosnál az
 // egyik ág marad, a többi ág eltűnik. A végére egyetlen ellenállás marad a rajzon.
 
+import { ePlain } from './tex';
 import type { Circuit } from '../solver/model';
 import type { Edge, Reduction } from './reduction';
 
@@ -42,7 +43,7 @@ export function redrawSequence(base: Circuit, red: Reduction): { circuit: Circui
     const kept = keepBranch?.elements.find((x) => x.id === first);
     if (kept) {
       kept.value = e.R;
-      kept.name = `R${e.key}`;
+      kept.name = `R${ePlain(e.key)}`;
     }
     for (const id of rest) {
       const br = find(id);

@@ -270,3 +270,17 @@ describe('1. ZH 4. feladat forrás-változata: P = I²·Re vagy U²/Re, leadott 
     expect(src).toBeGreaterThan(5);
   });
 });
+
+describe('összevont ellenállás neve: Re′, Re″ (Levi döntése, 2026-11-09)', () => {
+  it('a levezetésben nincs R_{e1}, helyette vesszős név', () => {
+    let primed = 0;
+    for (let i = 0; i < 20; i++) {
+      const p = generateProblem({ seed: `RN${i}`, topic: 'oszto', level: 'nehez' });
+      const txt = JSON.stringify(solveWith(p, 'redukcio'));
+      expect(txt).not.toMatch(/R_\{e[0-9]\}/);
+      expect(txt).not.toMatch(/Re[0-9]/);
+      if (txt.includes("R_{e'}")) primed++;
+    }
+    expect(primed).toBeGreaterThan(10);
+  });
+});

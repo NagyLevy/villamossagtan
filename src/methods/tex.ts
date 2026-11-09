@@ -52,3 +52,16 @@ export function texOf(q: 'U' | 'I', id: string): string {
 export function elementText(el: CircuitElement, value: string): string {
   return `${el.id} (${value})`;
 }
+
+/**
+ * Az összevont ellenállás neve (Levi döntése, 2026-11-09): az eredő Re, minden újabb összevonás egy vesszővel több:
+ * Re′, Re″, Re‴, utána Re⁽⁴⁾, Re⁽⁵⁾ … (képletben R_e^{(4)}). A belső kulcs továbbra is e1, e2, …
+ */
+export function eTex(key: string): string {
+  const n = Number(key.slice(1));
+  return n >= 1 && n <= 3 ? `e${"'".repeat(n)}` : `e^{(${n})}`;
+}
+export function ePlain(key: string): string {
+  const n = Number(key.slice(1));
+  return n >= 1 && n <= 3 ? `e${'′″‴'[n - 1]}` : `e⁽${[...String(n)].map((d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(d)]).join('')}⁾`;
+}

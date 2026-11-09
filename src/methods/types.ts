@@ -10,7 +10,7 @@ export type MethodId = 'redukcio' | 'kirchhoff' | 'hurokaram' | 'szuperpozicio' 
 export type AcMethodId = 'impedancia' | 'fazor' | 'teljesitmeny' | 'helyettesito' | 'rezonancia' | 'tranziens';
 
 export interface Quantity {
-  /** A mennyiség jele LaTeX-ben, pl. "I_{R3}" vagy "R_{e1}". */
+  /** A mennyiség jele LaTeX-ben, pl. "I_{R3}" vagy "R_{e'}". */
   symbol: string;
   value: number;
   unit: Unit;
@@ -27,7 +27,7 @@ export interface LoopRef {
 export interface GroupRef {
   /** Az összevont (eredő) csoport eredeti elemei. */
   elements: string[];
-  /** A csoport felirata az ábrán, pl. "Re1 = 12 Ω". */
+  /** A csoport felirata az ábrán, pl. "Re′ = 12 Ω". */
   label: string;
   tone: 'accent' | 'result' | 'transform';
 }
