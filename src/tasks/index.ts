@@ -2,7 +2,7 @@
 // Itt áll össze a próbavizsga feladatsora is.
 
 import { AC_LEVEL_NAMES, AC_TOPIC_NAMES, generateAcTask, type AcLevel, type AcTopic } from '../ac/problems';
-import { generateProblem, TOPIC_NAMES, type Problem, type Topic } from '../generator/generate';
+import { generateProblem, TOPIC_NAMES, type Problem, type TeacherType, type Topic } from '../generator/generate';
 import { LEVEL_NAMES, type Level } from '../generator/values';
 import { Rng } from '../generator/rng';
 import type { AnswerField, Domain, Task } from './types';
@@ -41,6 +41,8 @@ export interface DcSpec {
   seed: string;
   starDelta?: boolean;
   starDeltaMode?: 'delta-csillag' | 'csillag-delta' | 'veletlen';
+  /** A tanári gyakorlati típusok közül (topic: 'tanari'). */
+  teacherType?: TeacherType;
 }
 
 export interface AcSpec {
@@ -54,7 +56,7 @@ export type TaskSpec = DcSpec | AcSpec;
 
 export function makeTask(s: TaskSpec): Task {
   if (s.domain === 'ac') return generateAcTask({ seed: s.seed, topic: s.topic, level: s.level });
-  return dcTask(generateProblem({ seed: s.seed, topic: s.topic, level: s.level, starDelta: s.starDelta, starDeltaMode: s.starDeltaMode }));
+  return dcTask(generateProblem({ seed: s.seed, topic: s.topic, level: s.level, starDelta: s.starDelta, starDeltaMode: s.starDeltaMode, teacherType: s.teacherType }));
 }
 
 // ───────── Témakörök a választóhoz ─────────
@@ -94,7 +96,10 @@ export const AC_LEVELS: { id: AcLevel; name: string }[] = (Object.keys(AC_LEVEL_
 
 // ───────── Próbavizsga ─────────
 
-export type ExamKind = 'dc' | 'ac' | 'vegyes';
+export type ExamKind = 'dc' | 'zh1' | 'ac' | 'vegyes';
+
+/** A váltóáramú anyagot is tartalmazó vizsgák (amíg a váltóáram zárva van, ezek is). */
+export const AC_EXAMS: ExamKind[] = ['ac', 'vegyes'];
 
 export interface ExamInfo {
   kind: ExamKind;
@@ -105,6 +110,7 @@ export interface ExamInfo {
 
 export const EXAMS: ExamInfo[] = [
   { kind: 'dc', name: 'Villamosságtan 1 (egyenáram)', minutes: 45, description: '5 feladat: eredő ellenállás, hálózatszámítás, osztók, teljesítmény, Thevenin.' },
+  { kind: 'zh1', name: '1. ZH (tanári formátum)', minutes: 90, description: 'A korábbi 1. ZH-k felépítése: 1. eredő csillag-deltával, 2. hurokáram ismert hurokkal, 3. osztók egy képletben, 4. teljesítmény, 5. üresjárási feszültség, rövidzárási áram, belső ellenállás.' },
   { kind: 'ac', name: 'Villamosságtan 2 (szinuszos)', minutes: 90, description: '10 feladat: impedancia, fazorok, teljesítmény, helyettesítő generátor, rezgőkör, bekapcsolás.' },
   { kind: 'vegyes', name: 'Vegyes (év végi)', minutes: 60, description: '7 feladat mindkét félév anyagából.' },
 ];
@@ -122,6 +128,14 @@ export function examTasks(kind: ExamKind, seed: string): Task[] {
       dc(2, 'oszto', 'kozepes'),
       dc(3, 'ohm', 'nehez'),
       dc(4, 'thevenin', 'kozepes', rng.chance(0.4)),
+    ];
+  if (kind === 'zh1')
+    return [
+      dc(0, 'csillag-delta', 'kozepes', true),
+      makeTask({ domain: 'dc', topic: 'tanari', level: 'kozepes', seed: s(1), teacherType: 'hurokaram' }),
+      dc(2, 'oszto', 'nehez'),
+      dc(3, 'ohm', 'nehez'),
+      makeTask({ domain: 'dc', topic: 'tanari', level: 'kozepes', seed: s(4), teacherType: 'thevenin' }),
     ];
   if (kind === 'ac')
     return [

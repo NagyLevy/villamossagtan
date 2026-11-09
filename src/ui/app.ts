@@ -11,7 +11,7 @@ import { methodFit } from '../methods/fit';
 import { dailyProblem } from '../daily/problem';
 import { DAILY_LEVELS, dailyChallenge, dayKey, msUntilNext, type DailyLevel } from '../daily/schedule';
 import { isDone, loadProgress, markDone, streak } from '../daily/progress';
-import { AC_LEVELS, AC_TOPICS, DC_LEVELS, DC_TOPICS, dcTask, EXAMS, examTasks, makeTask, type ExamKind } from '../tasks';
+import { AC_LEVELS, AC_TOPICS, DC_LEVELS, DC_TOPICS, dcTask, AC_EXAMS, EXAMS, examTasks, makeTask, type ExamKind } from '../tasks';
 import type { Domain, Task } from '../tasks/types';
 import { button, iconButton, segmented, select, slider, toast, toggle } from './components';
 import { h, icon, ICONS } from './dom';
@@ -34,7 +34,7 @@ export function startApp(root: HTMLElement): void {
   // Zárt váltóáramnál a korábban elmentett választás is visszaáll egyenáramra.
   if (!AC_ENABLED) {
     settings.domain = 'dc';
-    if (settings.examKind !== 'dc') settings.examKind = 'dc';
+    if (AC_EXAMS.includes(settings.examKind)) settings.examKind = 'dc';
   }
   const update = (patch: Partial<Settings>) => {
     Object.assign(settings, patch);
@@ -273,7 +273,7 @@ export function startApp(root: HTMLElement): void {
   const showExamStart = () => {
     stopTimer();
     const cards = EXAMS.map((e) => {
-      const locked = !AC_ENABLED && e.kind !== 'dc';
+      const locked = !AC_ENABLED && AC_EXAMS.includes(e.kind);
       return h(
         'button',
         {

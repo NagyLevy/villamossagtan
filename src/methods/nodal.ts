@@ -22,6 +22,12 @@ export interface NodalStepsOptions {
   ground?: number;
   /** Ezek a csomópontok akkor is lényegesek, ha csak két ág fut beléjük (pl. az A, B kapcsok). */
   forceEssential?: number[];
+  /**
+   * Csak ezeknek a csomópontoknak a potenciálja kell (a tanár úr: „Vegyük észre… arra nincs is szükség”).
+   * A levezetés ekkor csak a hozzájuk szükséges egyenleteket mutatja; ha egy sem kell, „számolás nélkül”.
+   * A gép belül ettől függetlenül a teljes rendszert oldja meg.
+   */
+  needed?: number[];
   /** A részhálózat csomópontja → a rajzon látható hálózat csomópontja. */
   toDrawing?: (n: number) => number;
   /** Minden lépés kiemeléséhez hozzáadódik (pl. kiiktatott források, lekötött terhelés). */
@@ -134,10 +140,50 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
     return `+ \\frac{${ph(from)}${to === ground ? '' : ` - ${ph(to)}`}${eTex}}{${rs}}`;
   };
 
+  // Melyik egyenletek kellenek? A feszültségforrással összekötött csomópontok csoportja egy egység (a csoport
+  // sorai a csoport ismeretleneit határozzák meg); a szükséges csoportokból indulva lezárjuk a halmazt.
+  const groupIdx = (node: number) => sys.groups.findIndex((g) => g.includes(node));
+  const rowGroup = sys.rows.map((r) => groupIdx(r.kind === 'fix' ? r.path!.s : r.nodes[0]!));
+  const sel = new Set<number>();
+  if (opts.needed) {
+    for (const nd of opts.needed) if (nd !== ground && sys.unknowns.includes(nd)) sel.add(groupIdx(nd));
+    for (let grew = true; grew; ) {
+      grew = false;
+      sys.rows.forEach((r, ri) => {
+        if (!sel.has(rowGroup[ri]!)) return;
+        r.coeffs.forEach((c, j) => {
+          const g = groupIdx(sys.unknowns[j]!);
+          if (Math.abs(c) > 1e-12 && !sel.has(g)) {
+            sel.add(g);
+            grew = true;
+          }
+        });
+      });
+    }
+  } else sys.groups.forEach((_, gi) => sel.add(gi));
+  const keep = sys.rows.map((_, ri) => sel.has(rowGroup[ri]!));
+  const keptKcl = sys.rows.filter((r, ri) => keep[ri] && r.kind !== 'fix').length;
+  const totalKcl = sys.rows.filter((r) => r.kind !== 'fix').length;
+  const neededTxt = (opts.needed ?? []).filter((nd) => nd !== ground).map(phTxt).join(', ');
+  if (opts.needed && keptKcl < totalKcl) {
+    steps.push({
+      title: 'Vegyük észre',
+      text:
+        keptKcl === 0
+          ? neededTxt
+            ? `A keresett mennyiséghez csak ${neededTxt} potenciálja kell, és ezt a feszültségforrások közvetlenül megadják. A feladat tulajdonképpen számolás nélkül megoldható: a többi csomópont potenciálját nem ismerjük, de arra nincs is szükség.`
+            : 'A keresett ellenállás egy áramforrással sorban van: az ágban a forrás árama folyik. A feladat tulajdonképpen számolás nélkül megoldható, egyetlen csomóponti egyenletre sincs szükség.'
+          : `A keresett mennyiséghez csak ${neededTxt} potenciálja kell. Ehhez ${keptKcl} csomóponti egyenlet elég (a többi ${totalKcl - keptKcl} ismeretlen potenciálra nincs szükség, azok egyenleteit nem írjuk fel).`,
+      highlight: H({ nodes: dn((opts.needed ?? []).filter((nd) => nd !== ground)), nodeLabels }),
+      group: opts.group,
+    });
+  }
+
   // A tanár úr módszere: a törtes egyenletet a nevezők legkisebb közös többszörösével beszorozzuk,
   // hogy egész együtthatók legyenek. A megoldás ettől nem változik.
   const rows = sys.rows.map((r) => ({ coeffs: [...r.coeffs], rhs: r.rhs }));
   sys.rows.forEach((r, ri) => {
+    if (!keep[ri]) return;
     if (r.kind === 'fix') {
       const q = r.path!;
       const isShort = q.elems.some((e) => e.id.startsWith('__'));
@@ -198,22 +244,30 @@ export function nodalSteps(net: Netlist, opts: NodalStepsOptions = {}): NodalSte
     }
   });
 
-  steps.push(
-    ...solveSystemSteps(
-      rows.map((r) => r.coeffs),
-      rows.map((r) => r.rhs),
-      sys.unknowns.map(ph),
-      sys.unknowns.map(phTxt),
-      x,
-      'V',
-      H({ nodes: dn(topo.essential), nodeLabels }),
-      opts.group,
-    ),
-  );
+  // Az egyenletrendszer csak a megtartott sorokkal és a hozzájuk tartozó ismeretlenekkel (ha van csomóponti egyenlet).
+  const keptRows = sys.rows.map((_, ri) => ri).filter((ri) => keep[ri]);
+  const cols = sys.unknowns.map((_, j) => j).filter((j) => sel.has(groupIdx(sys.unknowns[j]!)));
+  if (keptKcl > 0)
+    steps.push(
+      ...solveSystemSteps(
+        keptRows.map((ri) => cols.map((j) => rows[ri]!.coeffs[j]!)),
+        keptRows.map((ri) => rows[ri]!.rhs),
+        cols.map((j) => ph(sys.unknowns[j]!)),
+        cols.map((j) => phTxt(sys.unknowns[j]!)),
+        cols.map((j) => x[j]!),
+        'V',
+        H({ nodes: dn(topo.essential), nodeLabels }),
+        opts.group,
+      ),
+    );
+  const known = topo.essential.filter((n) => n === ground || sel.has(groupIdx(n)));
   steps.push({
     title: 'A csomópontok potenciálja',
-    text: 'Most már minden csomópont potenciálja ismert (a referenciához képest). Ezekből bármelyik ellenállás feszültsége a két végének különbsége, az árama pedig Ohm törvényéből jön.',
-    highlight: H({ nodes: dn(topo.essential), nodeLabels: topo.essential.map((n) => ({ node: draw(n), label: `${phTxt(n)} = ${formatQuantity(phi.get(n)!, 'V', { sig: 3 })}` })) }),
+    text:
+      known.length === topo.essential.length
+        ? 'Most már minden csomópont potenciálja ismert (a referenciához képest). Ezekből bármelyik ellenállás feszültsége a két végének különbsége, az árama pedig Ohm törvényéből jön.'
+        : 'A szükséges csomópontok potenciálja ismert (a referenciához képest). Ezekből a keresett ellenállás feszültsége a két végének különbsége, az árama pedig Ohm törvényéből jön.',
+    highlight: H({ nodes: dn(known), nodeLabels: known.map((n) => ({ node: draw(n), label: `${phTxt(n)} = ${formatQuantity(phi.get(n)!, 'V', { sig: 3 })}` })) }),
     group: opts.group,
   });
   return { steps, sys, phi, values, currents, ph, phTxt };
@@ -236,7 +290,18 @@ export function solveNodalMethod(p: Problem): MethodResult {
   const map = toNetlist(p.circuit);
   const net = map.net;
   if (!net.elements.some((e) => e.kind !== 'R')) return { ok: false, reason: 'Nincs forrás a hálózatban.' };
-  const d = nodalSteps(net);
+  // Ha minden kérdés egy ellenállásra vonatkozik, csak az ágaik végpontjainak potenciálja kell.
+  const onlyResistors = p.questions.every((q) => q.target && ['U', 'I', 'P'].includes(q.kind) && net.elements.find((e) => e.id === q.target)?.kind === 'R');
+  const probe = onlyResistors ? buildNodal(net) : null;
+  const needed = probe
+    ? targetResistors(p).flatMap((t) => {
+        const q = probe.topo.paths.find((pp) => pp.elems.some((e) => e.id === t));
+        // Áramforrásos ágban az ellenállás árama a forrás árama: potenciál nem kell hozzá.
+        if (q && q.elems.some((e) => net.elements.find((x) => x.id === e.id)?.kind === 'I')) return [];
+        return q ? [q.s, q.e] : [];
+      })
+    : undefined;
+  const d = nodalSteps(net, { needed });
   if (!d) return { ok: false, reason: 'Egyetlen hurok: ehhez elég Ohm törvénye vagy a huroktörvény.' };
   const { sys, phi, values, ph, phTxt } = d;
   const nodeLabels = sys.topo.essential.map((n) => ({ node: n, label: `${phTxt(n)} = ${formatQuantity(phi.get(n)!, 'V', { sig: 3 })}` }));

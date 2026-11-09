@@ -13,7 +13,7 @@ import { simplificationStep } from './common';
 import { solveAny } from './engine';
 import { nodalSteps } from './nodal';
 import { transformAndReduce } from './stardelta';
-import { groupOf, reduceSP, reductionSteps, rSym, singleSourceSteps } from './reduction';
+import { exprNum, groupOf, reduceSP, reductionSteps, rSym, singleSourceSteps } from './reduction';
 import { texQty } from './tex';
 import type { MethodAnswer, MethodResult, Step } from './types';
 
@@ -171,8 +171,9 @@ export function solveThevenin(p: Problem): MethodResult {
       steps.push({ ...st, highlight: { ...st.highlight, killed: killedMarks, terminals: true }, group: 'Rg: belső ellenállás' });
   steps.push({
     title: 'Belső ellenállás',
-    text: 'Az A–B kapcsok felől nézett eredő a helyettesítő generátor belső ellenállása.',
+    text: 'Az A–B kapcsok felől nézett eredő a helyettesítő generátor belső ellenállása (a ZH-lapokon Rb). Egyetlen képletben, ahogy a tanár úr írja:',
     terms: [`R_g = R_{AB} = ${rSym(red.root)}`],
+    subst: red.root.kind !== 'leaf' ? `R_g = ${exprNum(red.root)}` : undefined,
     result: { symbol: 'R_g', value: Rth, unit: 'Ω' },
     highlight: sd ? sd.filterH({ ...sd.after, killed: killedMarks, groups: [groupOf(red.root, 'result')] }) : { killed: killedMarks, groups: [groupOf(red.root, 'result')], terminals: true },
     group: 'Rg: belső ellenállás',

@@ -72,7 +72,8 @@ export function methodFit(m: MethodId, p: Problem, relaxed = false): Fit {
       const h = systemSize(solveWith(p, 'hurokaram'));
       const c = systemSize(solveWith(p, 'csomoponti'));
       const [mine, other] = m === 'hurokaram' ? [h, c] : [c, h];
-      const ok = mine < other || (relaxed && mine === other && mine >= 1);
+      // A módszer gyakorlásához legalább egy egyenletnek maradnia kell (ha „számolás nélkül” megy, az nem ez a típus).
+      const ok = mine >= 1 && (mine < other || (relaxed && mine === other));
       const name = m === 'hurokaram' ? 'Hurokárammal' : 'Csomóponti potenciállal';
       const otherName = m === 'hurokaram' ? 'csomóponti potenciállal' : 'hurokárammal';
       return { ok, why: mine < other ? `${name} ${eq(mine)}, ${otherName} ${eq(other)}: így a legrövidebb.` : `${name} ${eq(mine)}, ${otherName} is ${eq(other)}: itt egyformán jó, gyakorold így.` };

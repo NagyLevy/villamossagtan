@@ -206,6 +206,33 @@ export function solveLoopCurrent(p: Problem): MethodResult {
   }
   for (const e of net.elements) if (e.kind === 'I') values.get(e.id)!.U = (phi.get(e.a) ?? 0) - (phi.get(e.b) ?? 0);
 
+  // Melyik hurokáramok kellenek a válaszhoz? Ha minden kérdés egy ellenállásra vonatkozik, csak az azokon
+  // átfolyó ismeretlen hurkok, és azok, amelyek ezek egyenleteiben szerepelnek (lezárás). Különben mind.
+  // Feszültségforrás árama/teljesítménye is csak a rajta átfolyó hurokáramokból jön; áramforrás feszültségéhez
+  // viszont a teljes hurka kellene, ezért akkor mind.
+  const kindOf = (id?: string) => net.elements.find((e) => e.id === id)?.kind;
+  const onlyResistors = p.questions.every((q) => q.target && ['U', 'I', 'P'].includes(q.kind) && (kindOf(q.target) === 'R' || (kindOf(q.target) === 'V' && q.kind !== 'U')));
+  const needSet = new Set<number>();
+  if (onlyResistors) {
+    for (const q of p.questions) for (const { l } of memb(q.target!)) if (l.unknown !== null) needSet.add(l.unknown - 1);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const i of [...needSet])
+        rows[i]!.coeffs.forEach((c, j) => {
+          if (Math.abs(c) > 1e-12 && !needSet.has(j)) {
+            needSet.add(j);
+            grew = true;
+          }
+        });
+    }
+  } else for (let i = 0; i < M; i++) needSet.add(i);
+  const need = [...needSet].sort((a, b) => a - b);
+  const needTxt = need.map((i) => plain[i]!).join(', ');
+  const vegyukEszre =
+    need.length === 0
+      ? 'Vegyük észre: a keresett ellenálláson csak ismert (áramforrás) hurokáramok folynak át, így egyetlen egyenletet sem kell felírni.'
+      : `Vegyük észre: a keresett mennyiséghez csak ${needTxt} kell, és ${need.length === 1 ? 'ennek a huroknak az egyenletében' : 'ezeknek a hurkoknak az egyenleteiben'} a többi ismeretlen hurokáram nem szerepel (azok nem érintik). Elég tehát ${need.length === 1 ? 'ezt az egy egyenletet' : `ezt a(z) ${need.length} egyenletet`} felírni.`;
+
   // Lépések.
   const steps: Step[] = [];
   const simp = simplificationStep(p, net);
@@ -228,19 +255,21 @@ export function solveLoopCurrent(p: Problem): MethodResult {
             'Minden ellenállást és feszültségforrást érintenie kell egy ismeretlen huroknak (akkor is, ha egy ismert hurok már átmegy rajta). Az áramforrást csak az ismert hurok érinti.',
           ]
         : []),
-      `${M} ismeretlen hurokáram: ${plain.join(', ')}; ehhez ${M} huroktörvény kell.`,
+      `${M} ismeretlen hurokáram: ${plain.join(', ')}.`,
+      ...(need.length < M ? [vegyukEszre] : [`Mind a(z) ${M} huroktörvényre szükség van.`]),
     ],
     highlight: { loops: ordered.map(loopRef) },
   });
-  steps.push(...rows.map((r) => r.step));
-  if (M)
+  // A tanár úr módszere („Vegyük észre…”): csak a keresett mennyiséghez szükséges hurkok egyenletei.
+  steps.push(...need.map((i) => rows[i]!.step));
+  if (need.length)
     steps.push(
       ...solveSystemSteps(
-        rows.map((r) => r.coeffs),
-        rows.map((r) => r.rhs),
-        names,
-        plain,
-        x,
+        need.map((i) => need.map((j) => rows[i]!.coeffs[j]!)),
+        need.map((i) => rows[i]!.rhs),
+        need.map((i) => names[i]!),
+        need.map((i) => plain[i]!),
+        need.map((i) => x[i]!),
         'A',
         { loops: ordered.map(loopRef) },
       ),

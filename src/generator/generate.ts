@@ -701,7 +701,9 @@ function teacherDraft(level: Level, o: GenerateOptions, rng: Rng): Draft | null 
             degree[e.b]!++;
           }
           if (degree.filter((d) => d >= 3).length !== 4) return null;
-          const rs = interestingResistors(ctx);
+          // Áramforrással sorba kötött ellenállás nem jó kérdés: az árama a forrásé, csomóponti egyenlet sem kell hozzá.
+          const Igs = map.net.elements.filter((e) => e.kind === 'I').map((e) => Math.abs(e.value));
+          const rs = interestingResistors(ctx).filter((r) => !Igs.some((ig) => Math.abs(Math.abs(sol.elements.get(r.id)!.I) - ig) < 1e-9));
           if (rs.length < 2) return null;
           const [r1, r2] = rng.shuffle([...rs]) as [CircuitElement, CircuitElement];
           return [askElementI(circuit, r1, sol.elements.get(r1.id)!.I, true), askElementU(circuit, r2, sol.elements.get(r2.id)!.U, true)];

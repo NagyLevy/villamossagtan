@@ -20,8 +20,11 @@ describe('hurokáram a tanár úr módszerével', () => {
           expect(steps.find((s) => s.title === 'Hány hurok kell?')!.terms![0]).toMatch(new RegExp(`= ${loops.length}$`));
           const net = toNetlist(p.circuit).net;
           const nI = net.elements.filter((e) => e.kind === 'I').length;
-          // Ismeretlen hurkonként egy huroktörvény; az áramforrásokéhoz nem kell egyenlet.
-          expect(steps.filter((s) => s.title.startsWith('Huroktörvény')).length).toBe(loops.length - nI);
+          // Legfeljebb ismeretlen hurkonként egy huroktörvény (az áramforrásokéhoz nem kell egyenlet); ha kevesebb,
+          // a tanár úr szerint indokolni kell („Vegyük észre…”).
+          const eqs = steps.filter((s) => s.title.startsWith('Huroktörvény')).length;
+          expect(eqs).toBeLessThanOrEqual(loops.length - nI);
+          if (eqs < loops.length - nI) expect(pick.bullets!.some((b) => b.startsWith('Vegyük észre'))).toBe(true);
           if (nI) withSource++;
           const ctx = { circuit: p.circuit, layout: computeLayout(p.circuit), map: toNetlist(p.circuit) };
           for (const l of loops) expect(loopGeometry(ctx, l)).not.toBeNull();

@@ -193,6 +193,68 @@ export function distribute(root: Edge, Uroot: number): Map<Edge, { U: number; I:
   return out;
 }
 
+/**
+ * Az összevonási fa egyetlen beágyazott képletben, számokkal, ahogy a tanár úr írja:
+ * `Re = ((0,5 + 8) × (1 + 7) + 0,333) × 5 × 5 + 4` (× a replusz; soros tag párhuzamosban zárójelben).
+ */
+export function exprNum(e: Edge, parent?: Edge['kind']): string {
+  if (e.kind === 'leaf') return texNum(e.R);
+  const inner = e.children.map((c) => exprNum(c.edge, e.kind)).join(e.kind === 'series' ? ' + ' : ' \\times ');
+  return parent === 'parallel' && e.kind === 'series' ? `\\left(${inner}\\right)` : inner;
+}
+
+/**
+ * Az osztólánc egy képletben (a tanár úr ZH-megoldásai szerint): a forrás értéke szorozva a feszültség-
+ * vagy áramosztók törtjeivel a gyökértől a keresett ellenállásig, pl. `I₇ = 2 · 2/(2 + 5 + 7 × 11) · 11/(11 + 7)`.
+ * Feszültségforrásnál feszültséget, áramforrásnál áramot visz végig; a végén Ohm-törvénnyel vált, ha kell.
+ * null, ha a keresett elem nincs a fában.
+ */
+export function dividerChain(root: Edge, leafId: string, source: { kind: 'V' | 'I'; value: number }, want: 'U' | 'I'): { tex: string; value: number } | null {
+  const path = findPath(root, leafId);
+  if (path.length === 0 || path.at(-1)!.kind !== 'leaf') return null;
+  let q: 'U' | 'I' = source.kind === 'V' ? 'U' : 'I';
+  let value = source.value;
+  const parts = [texQty(source.value, source.kind === 'V' ? 'V' : 'A')];
+  for (let i = 0; i + 1 < path.length; i++) {
+    const parent = path[i]!;
+    const child = path[i + 1]!;
+    if (parent.kind === 'series' && q === 'U') {
+      parts.push(`\\frac{${exprNum(child)}}{${exprNum(parent)}}`);
+      value *= child.R / parent.R;
+    } else if (parent.kind === 'parallel' && q === 'I') {
+      const sib = parent.children.map((c) => c.edge).filter((e) => e !== child);
+      if (sib.length === 1) {
+        parts.push(`\\frac{${exprNum(sib[0]!, 'parallel')}}{${exprNum(child, 'series')} + ${exprNum(sib[0]!, 'series')}}`);
+        value *= sib[0]!.R / (child.R + sib[0]!.R);
+      } else {
+        parts.push(`\\frac{${exprNum(parent)}}{${exprNum(child)}}`);
+        value *= parent.R / child.R;
+      }
+    }
+  }
+  const leaf = path.at(-1)!;
+  if (want !== q) {
+    parts.push(want === 'U' ? texNum(leaf.R) : `\\frac{1}{${texNum(leaf.R)}}`);
+    value = want === 'U' ? value * leaf.R : value / leaf.R;
+    q = want;
+  }
+  return { tex: `${texOf(q, leaf.key)} = ${parts.join(' \\cdot ')}`, value };
+}
+
+/** Az „egy képletben” lépés a kérdéses ellenállásra (csak ha legalább egy osztás van az úton). */
+export function chainStep(root: Edge, leafId: string, source: { kind: 'V' | 'I'; value: number }, want: 'U' | 'I'): Step | null {
+  if (findPath(root, leafId).length < 2) return null;
+  const c = dividerChain(root, leafId, source, want);
+  if (!c) return null;
+  return {
+    title: 'Egy képletben',
+    text: 'Ugyanez egyetlen egyenletben, ahogy a tanár úr a ZH-megoldásokban írja: a forrás értéke szorozva az osztók törtjeivel (× a replusz, azaz a párhuzamos eredő).',
+    terms: [c.tex],
+    result: { symbol: texOf(want, leafId), value: c.value, unit: want === 'U' ? 'V' : 'A' },
+    highlight: { elements: [leafId] },
+  };
+}
+
 export function findPath(root: Edge, leafId: string): Edge[] {
   const path: Edge[] = [];
   const dfs = (e: Edge): boolean => {
@@ -336,8 +398,11 @@ export function solveByReduction(p: Problem): MethodResult {
   const reqLabel = sources.length === 0 ? 'R_{AB}' : 'R_{e}';
   steps.push({
     title: 'Eredő ellenállás',
-    text: sources.length === 0 ? 'Az A és B kapcsok közötti eredő ellenállás.' : 'A forrás felől nézett eredő ellenállás.',
+    text:
+      (sources.length === 0 ? 'Az A és B kapcsok közötti eredő ellenállás.' : 'A forrás felől nézett eredő ellenállás.') +
+      (root.kind !== 'leaf' ? ' Egyetlen képletben (ahogy a tanár úr írja):' : ''),
     terms: [`${reqLabel} = ${rSym(root)}`],
+    subst: root.kind !== 'leaf' ? `${reqLabel} = ${exprNum(root)}` : undefined,
     result: { symbol: reqLabel, value: root.R, unit: 'Ω' },
     highlight: { groups: [groupOf(root, 'result')] },
     ...fin,
@@ -397,6 +462,9 @@ export function solveByReduction(p: Problem): MethodResult {
       shown.add(child);
       steps.push(dividerStep(parent, child, values));
     }
+    const want = p.questions.some((q) => q.target === t && q.kind === 'U') ? 'U' : p.questions.some((q) => q.target === t && q.kind === 'I') ? 'I' : s.kind === 'V' ? 'U' : 'I';
+    const chain = chainStep(root, t, { kind: s.kind === 'V' ? 'V' : 'I', value: s.value }, want);
+    if (chain) steps.push(chain);
   }
 
   for (const q of p.questions) {
@@ -645,6 +713,8 @@ export function singleSourceSteps(
       shown.add(child);
       steps.push(dividerStep(path[i]!, child, values));
     }
+    const chain = chainStep(root, t, { kind: s.kind === 'V' ? 'V' : 'I', value: s.value }, s.kind === 'V' ? 'U' : 'I');
+    if (chain) steps.push(chain);
   }
   return {
     steps: steps.map((st, i) => {
