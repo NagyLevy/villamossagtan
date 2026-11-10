@@ -37,7 +37,8 @@ describe('áramkör-építő', () => {
     const { p } = checkAll(exampleBoard(), ['redukcio', 'kirchhoff', 'hurokaram', 'csomoponti']);
     expect(p.stats).toEqual({ meshes: 2, resistors: 3, sources: 1 });
     // 12 V, 4 Ω + (6 Ω × 3 Ω = 2 Ω): a forrás árama 2 A.
-    const i4 = p.questions.find((q) => q.target === 'R4')!.answer;
+    // A példa elemei sorszámozottak: R1 = 4 Ω.
+    const i4 = p.questions.find((q) => q.target === 'R1')!.answer;
     expect(Math.abs(i4)).toBeCloseTo(2, 9);
   });
 
@@ -123,5 +124,24 @@ describe('áramkör-építő: végtelen tábla', () => {
       if (base.ok && moved.ok) expect(moved.problem.questions.map((q) => q.answer)).toEqual(base.problem.questions.map((q) => q.answer));
     }
     checkAll(shift(exampleBoard(), -7, -2), ['redukcio', 'kirchhoff']);
+  });
+});
+
+describe('áramkör-építő: sorszámozás a letevés sorrendjében', () => {
+  it('a név a sorszámból jön (R1, R2 …), nem az értékből vagy a helyből; az új elem a legkisebb szabad számot kapja', async () => {
+    const { nextNumber, numberParts, partName } = await import('../builder/model');
+    const b = board({ 'v:0:0': { ...V(12), n: 1 }, 'h:0:0': { ...R(7), n: 3 }, 'v:1:0': { ...R(7), n: 1 }, 'h:0:1': W });
+    const r = buildProblem(b);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.names.get('h:0:0')).toBe('R3');
+    expect(r.names.get('v:1:0')).toBe('R1');
+    expect(r.names.get('v:0:0')).toBe('Ug1');
+    expect(nextNumber(b, 'R')).toBe(2);
+    // Régi mentés sorszám nélkül: pótlódik, a meglévők nem változnak.
+    b.parts['h:1:0'] = R(5);
+    numberParts(b);
+    expect(partName(b.parts['h:1:0']!)).toBe('R2');
+    expect(partName(b.parts['h:0:0']!)).toBe('R3');
+    checkAll(b, ['redukcio']);
   });
 });

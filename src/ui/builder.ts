@@ -2,7 +2,7 @@
 // között húzva. Minden változás után újraszámol: táblázat minden elem U, I, P értékével, alatta a megoldás
 // nézete, ahol a módszerek egyenként végignézhetők és össze vannak vetve. A modell: src/builder/model.ts.
 
-import { buildProblem, crossingKey, DEFAULT_VALUE, edgeEnds, edgeKey, exampleBoard, type Board, type EdgeKey, type Part, type PartKind } from '../builder/model';
+import { buildProblem, crossingKey, DEFAULT_VALUE, edgeEnds, edgeKey, exampleBoard, nextNumber, numberParts, partName, type Board, type EdgeKey, type Part, type PartKind } from '../builder/model';
 import { tableTargets } from '../methods/check';
 import { dcTask } from '../tasks';
 import { formatQuantity, type Unit } from '../units';
@@ -379,7 +379,9 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     const r = buildProblem(board);
     dangling = new Set(r.dangling);
     syncHistory();
-    names = r.ok ? r.names : new Map();
+    // A név a letevés sorrendjéből jön (R1, R2 …), így akkor is látszik, ha a rajz még nem számolható.
+    numberParts(board);
+    names = new Map(Object.entries(board.parts).flatMap(([k, p]) => (partName(p) ? [[k, partName(p)!] as [EdgeKey, string]] : [])));
     draw();
     if (!r.ok) {
       status.textContent = r.reason;
@@ -551,7 +553,11 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   const place = (key: EdgeKey, kind: PartKind) => {
     const old = board.parts[key];
     // Ugyanolyan elemre ejtve megmarad az érték; különben az alapérték jön.
-    board.parts[key] = old && old.kind === kind ? old : { kind, value: DEFAULT_VALUE[kind], dir: kind === 'V' || kind === 'I' ? -1 : 1 };
+    if (!(old && old.kind === kind)) {
+      // Új elem: a fajtájából a következő sorszámot kapja (a régi elem helyére téve előbb az kikerül).
+      delete board.parts[key];
+      board.parts[key] = { kind, value: DEFAULT_VALUE[kind], dir: kind === 'V' || kind === 'I' ? -1 : 1, ...(kind === 'W' ? {} : { n: nextNumber(board, kind) }) };
+    }
     clearCrossing(key);
     selected = kind === 'W' ? null : key;
     recompute();
