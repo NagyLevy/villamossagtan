@@ -3,7 +3,7 @@
 Villamosságtan gyakorló webapp egyetemi elektronikai kurzus mellé (Villamosságtan 1: egyenáramú
 hálózatok; Villamosságtan 2: szinuszos hálózatok, rezgőkörök, bekapcsolási jelenségek; a tananyag
 Kuczmann–Kovács: Villamosságtan, Lineáris hálózatok elmélete I.). Véletlen (seedből reprodukálható)
-feladatok, lépésenkénti, animált levezetés. Négy mód: gyakorlás, időre, próbavizsga, napi feladatok.
+feladatok, lépésenkénti, animált levezetés. Öt mód: gyakorlás, időre, próbavizsga, napi feladatok, áramkör-építő.
 Nincs bejelentkezés, ranglista és pontrendszer. Élő oldal: https://nagylevy.github.io/villamossagtan/
 
 **Tudásbázis (csak Levi gépén):** ha létezik a `C:\Users\Levi\gyakorlok` Obsidian-vault, az a projekt
@@ -157,6 +157,12 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   és a tanári 1. ZH – közös készletéből; minden feladat fölött ott az előírt módszer, `prescribedMethod`,
   `fit.ts`), Váltóáram (10), Vegyes (7). Külön „tanári formátum” nincs a választóban (az `examTasks('zh1')`
   sor a tesztek miatt megmaradt). Beadás után összesítés és feladatonkénti megoldás. Pontrendszer, ranglista nincs.
+- **Építő:** saját áramkör rácson (`src/builder/model.ts` a modell, `src/ui/builder.ts` a felület): az elemek
+  (ellenállás, feszültség- és áramforrás) az eszköztárról a rácsvonalakra húzhatók, a vezeték pontról pontra húzva
+  rajzolható; elemre kattintva érték, megfordítás, törlés. Minden változás után újraszámol: táblázat minden elem
+  U, I, P értékével (MNA), alatta a megoldás nézete (`solved` nézet), ahol minden alkalmazható módszer levezetése
+  választható, és a módszerek össze vannak vetve. A lógó végek kimaradnak, a hibás rajzra (nincs forrás, rövidre
+  zárt elem, két külön kör, párhuzamos feszültségforrások) magyar üzenet jön. Teszt: `builder.test.ts`.
 - **Napi feladatok:** naponta új sor, mindenkinek ugyanaz (seed: `D{nap}-{terület}-{fokozat}-{sorszám}`),
   csak a kész feladatok jelölése marad meg a böngészőben.
 - A rajz nézete nem mozog (nincs automatikus nagyítás): a kiemelés és a feliratok mutatják a lépést.

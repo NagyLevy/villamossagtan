@@ -1090,3 +1090,277 @@ h2.daily-title {
 .wheel-seg.is-hover .wheel-icon-dot {
   fill: var(--accent-ink);
 }
+
+/* ───────── Áramkör-építő ───────── */
+
+.builder {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.builder-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.builder-card {
+  overflow: hidden;
+}
+
+.builder-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hair-2);
+  background: var(--surface-2);
+}
+
+.builder-tools,
+.builder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.builder-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--r-md);
+  padding: 7px 12px 7px 9px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+  font-size: 13.5px;
+  font-weight: 550;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.builder-tool:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 34%, transparent);
+}
+
+.builder-tool[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.builder-ghost {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.9;
+  box-shadow: var(--shadow-float);
+}
+
+.builder-canvas {
+  padding: 6px;
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(var(--grid-minor) 1px, transparent 1px), linear-gradient(90deg, var(--grid-minor) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.builder-svg {
+  display: block;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  height: auto;
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+}
+
+.bg-dot {
+  fill: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+
+.bg-hover {
+  stroke: var(--accent);
+  stroke-width: 10;
+  stroke-linecap: round;
+  opacity: 0.22;
+}
+
+.bp {
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.bp-hit {
+  stroke: transparent;
+  stroke-width: 26;
+}
+
+.bp-wire,
+.bp-mark,
+.bp-arrow {
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.bp-body {
+  fill: var(--surface);
+  stroke: currentColor;
+  stroke-width: 2.2;
+}
+
+.bp-arrow.is-solid {
+  stroke-width: 2.6;
+}
+
+.bp-label {
+  fill: var(--label);
+  font-size: 14px;
+  font-weight: 550;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 5;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.bp-node {
+  fill: var(--ink);
+  pointer-events: none;
+}
+
+.bp.is-selected {
+  color: var(--accent);
+}
+
+.bp.is-selected .bp-label {
+  fill: var(--accent);
+}
+
+.bp.is-dangling {
+  opacity: 0.45;
+}
+
+.bp.is-dangling .bp-wire {
+  stroke-dasharray: 5 5;
+}
+
+.builder-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  min-height: 54px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--hair-2);
+  background: var(--surface-2);
+  font-size: 14px;
+}
+
+.builder-help {
+  color: var(--ink-2);
+}
+
+.builder-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.builder-input {
+  width: 9ch;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair-2);
+  background: var(--surface);
+  font-size: 15px;
+  font-weight: 550;
+}
+
+.builder-input.is-bad {
+  border-color: var(--danger);
+}
+
+.builder-status {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--label);
+}
+
+.builder-status::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--result);
+}
+
+.builder-status.is-warn::before {
+  background: var(--node);
+}
+
+.builder-results-card {
+  padding: 20px 24px;
+}
+
+.builder-results-card:has(.builder-results:empty) {
+  display: none;
+}
+
+.builder-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.builder-h {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 650;
+  font-stretch: 92%;
+}
+
+.builder-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  max-width: 90ch;
+}
+
+.builder-results .value-table {
+  font-size: 14.5px;
+  max-width: 640px;
+}
+
+@media (max-width: 640px) {
+  .builder-tool span {
+    display: none;
+  }
+
+  .builder-tool {
+    padding: 8px 10px;
+  }
+
+  .builder-results-card {
+    padding: 16px;
+  }
+}
+
+.bp-label-value {
+  font-weight: 450;
+}

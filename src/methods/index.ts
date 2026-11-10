@@ -42,7 +42,13 @@ const ALL: MethodId[] = ['redukcio', 'kirchhoff', 'hurokaram', 'szuperpozicio', 
 /** Az adott feladatra alkalmazható módszerek, a menü sorrendjében. */
 export function applicableMethods(p: Problem): MethodId[] {
   return ALL.filter((m) => {
-    const r = solveWith(p, m);
+    // Saját (építőben rajzolt) áramkörnél egy módszer váratlan elrendezésen el is hasalhat: az nem alkalmazható.
+    let r: MethodResult;
+    try {
+      r = solveWith(p, m);
+    } catch {
+      return false;
+    }
     // Csak az számít alkalmazhatónak, ami legalább egy kérdésre választ ad.
     return r.ok && (r.solution.answers.length > 0 || p.questions.every((q) => q.kind === 'table'));
   });

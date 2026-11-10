@@ -17,6 +17,7 @@ import { button, iconButton, segmented, select, slider, toast, toggle } from './
 import { h, icon, ICONS } from './dom';
 import { isLite, setLite } from './perf';
 import { loadSettings, methodList, saveSettings, type MethodId, type Mode, type Settings, type ThemeChoice } from './settings';
+import { createBuilder } from './builder';
 import { openTopicWheel } from './wheel';
 import { fieldAnswerText, scoreTask, TaskViewer, type Score } from './viewer';
 import { formatNumber } from '../units';
@@ -28,7 +29,7 @@ import { formatNumber } from '../units';
 export const AC_ENABLED = false;
 const SOON = 'Hamarosan';
 
-const MODE_NAMES: Record<Mode, string> = { gyakorlas: 'Gyakorlás', idore: 'Időre', vizsga: 'Próbavizsga', napi: 'Napi' };
+const MODE_NAMES: Record<Mode, string> = { gyakorlas: 'Gyakorlás', idore: 'Időre', vizsga: 'Próbavizsga', napi: 'Napi', epito: 'Építő' };
 
 export function startApp(root: HTMLElement): void {
   const settings = loadSettings();
@@ -611,6 +612,12 @@ export function startApp(root: HTMLElement): void {
 
   // ───────── Útvonal ─────────
 
+  // ───────── Áramkör-építő ─────────
+
+  const showBuilder = () => {
+    main.replaceChildren(createBuilder(viewer));
+  };
+
   const route = () => {
     stopTimer();
     modeSeg.set(settings.mode);
@@ -619,6 +626,7 @@ export function startApp(root: HTMLElement): void {
     if (settings.mode === 'gyakorlas') showPractice();
     else if (settings.mode === 'idore') showTimed();
     else if (settings.mode === 'vizsga') showExamStart();
+    else if (settings.mode === 'epito') showBuilder();
     else showDaily();
   };
 
