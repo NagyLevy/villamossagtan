@@ -170,7 +170,9 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   áthelyezéskor megmarad, az új elem a legkisebb szabad számot kapja (nem az értékből és nem a helyből jön). A sorszám az
   alsó sávban kézzel is átírható (`renumber`); foglalt számnál a két elem számot cserél. A radír lenyomva
   húzható, mint a rajzprogramokban: amin áthalad, törli (egy visszavonási lépés). Eszközök gyorsbillentyűi (a gombokon
-  zárójelben): V vezeték, E ellenállás, F feszültségforrás, A áramforrás, R radír, M mozgatás. A fül mellett „Béta”. Minden változás után újraszámol: táblázat minden elem
+  zárójelben): V vezeték, E ellenállás, F feszültségforrás, A áramforrás, Q nyíl megfordítása, R radír,
+  M mozgatás. A Q a kijelölt (vagy az egér alatti) forrás nyilát azonnal megfordítja; ha nincs ilyen, a „Nyíl
+  megfordítása” eszközt kapcsolja be, amellyel a forrásra kattintva fordul meg az irány. A fül mellett „Béta”. Minden változás után újraszámol: táblázat minden elem
   U, I, P értékével (MNA), alatta a megoldás nézete (`solved` nézet), ahol minden alkalmazható módszer levezetése
   választható, és a módszerek össze vannak vetve. A lógó végek kimaradnak, a hibás rajzra (nincs forrás, rövidre
   zárt elem, két külön kör, párhuzamos feszültségforrások) magyar üzenet jön. Teszt: `builder.test.ts`.
