@@ -1628,3 +1628,46 @@ h2.daily-title {
   font-weight: 600;
   font-size: 12.5px;
 }
+
+/* Az áramkör-építő más, mint a négy feladatmód: a füle előtt függőleges elválasztó áll. */
+.seg-tabs .seg-btn:last-child {
+  position: relative;
+  margin-left: 22px;
+}
+
+.seg-tabs .seg-btn:last-child::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 30%;
+  bottom: 30%;
+  width: 1px;
+  background: var(--hair-2);
+}
+
+@media (max-width: 640px) {
+  .seg-tabs .seg-btn:last-child {
+    margin-left: 14px;
+  }
+
+  .seg-tabs .seg-btn:last-child::before {
+    left: -8px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Öt fül egy sorban: kisebb betű és köz, a „Béta” jelvény itt nem fér ki. */
+  .seg-tabs .seg-btn {
+    padding: 0 5px;
+    font-size: 13px;
+    flex: 0 1 auto;
+  }
+
+  .seg-tabs .seg-btn .badge {
+    display: none;
+  }
+
+  .seg.seg-tabs {
+    justify-content: space-between;
+  }
+}
