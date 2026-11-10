@@ -26,7 +26,7 @@ function theveninCircuit(Uth: number, Rth: number, RL: number): { circuit: Circu
   const rth = makeElement('R', Rth);
   rth.name = 'Rg';
   const load = makeElement('R', RL);
-  load.name = 'RL';
+  load.name = 'Rt';
   s.branch(0, 0, 0, 4, [src]);
   s.branch(0, 0, 4, 0, [rth]);
   s.wire(4, 0, 8, 0);
@@ -36,7 +36,7 @@ function theveninCircuit(Uth: number, Rth: number, RL: number): { circuit: Circu
   s.terminals = { a: s.pt(4, 0), b: s.pt(4, 4) };
   const c = s.build();
   const by = (n: string) => allElements(c).find((e) => e.name === n)!.id;
-  return { circuit: c, ids: { src: by('Uü'), rth: by('Rg'), load: by('RL') } };
+  return { circuit: c, ids: { src: by('Uü'), rth: by('Rg'), load: by('Rt') } };
 }
 
 /** A helyettesítő Norton-kör: In ∥ Rth és a terhelés. */
@@ -48,7 +48,7 @@ function nortonCircuit(In: number, Rth: number, RL: number): { circuit: Circuit;
   const rth = makeElement('R', Rth);
   rth.name = 'Rg';
   const load = makeElement('R', RL);
-  load.name = 'RL';
+  load.name = 'Rt';
   s.branch(0, 0, 0, 4, [src]);
   s.wire(0, 0, 4, 0);
   s.wire(0, 4, 4, 4);
@@ -61,7 +61,7 @@ function nortonCircuit(In: number, Rth: number, RL: number): { circuit: Circuit;
   s.terminals = { a: s.pt(8, 0), b: s.pt(8, 4) };
   const c = s.build();
   const by = (n: string) => allElements(c).find((e) => e.name === n)!.id;
-  return { circuit: c, ids: { src: by('In'), rth: by('Rg'), load: by('RL') } };
+  return { circuit: c, ids: { src: by('In'), rth: by('Rg'), load: by('Rt') } };
 }
 
 /** A kijelölt terhelés: a "load" szerepű elem, különben az első kérdéses ellenállás, amely egyedül áll az ágában. */
@@ -202,9 +202,9 @@ export function solveThevenin(p: Problem): MethodResult {
   steps.push({
     title: 'Thevenin-helyettesítő kép',
     text: 'A hálózat az A–B kapcsok felől egy Uü forrásfeszültségű, Rg belső ellenállású feszültséggenerátorral helyettesíthető. Visszakötve a terhelést, egyetlen hurok marad.',
-    terms: ['I_L =', `\\frac{U_{\\text{ü}}}{R_g + R_L}`],
-    subst: `I_L = \\frac{${texQty(Uth, 'V')}}{${texQty(Rth, 'Ω')} + ${texQty(RL, 'Ω')}}`,
-    result: { symbol: 'I_L', value: IL, unit: 'A' },
+    terms: ['I_t =', `\\frac{U_{\\text{ü}}}{R_g + R_t}`],
+    subst: `I_t = \\frac{${texQty(Uth, 'V')}}{${texQty(Rth, 'Ω')} + ${texQty(RL, 'Ω')}}`,
+    result: { symbol: 'I_t', value: IL, unit: 'A' },
     circuit: th.circuit,
     highlight: { elements: [th.ids.load], arrows: [{ element: th.ids.load, kind: 'I', value: IL }] },
     group: 'Helyettesítő képek',
@@ -223,9 +223,9 @@ export function solveThevenin(p: Problem): MethodResult {
   steps.push({
     title: 'Norton-helyettesítő kép',
     text: 'Ugyanez Norton-alakban: In forrásáram, vele párhuzamosan Rg. A terhelés árama áramosztással adódik, és megegyezik a Thevenin-képből kapottal.',
-    terms: ['I_L =', `I_n \\cdot \\frac{R_g}{R_g + R_L}`],
-    subst: `I_L = ${texQty(In, 'A', { paren: true })} \\cdot \\frac{${texQty(Rth, 'Ω')}}{${texQty(Rth, 'Ω')} + ${texQty(RL, 'Ω')}}`,
-    result: { symbol: 'I_L', value: (In * Rth) / (Rth + RL), unit: 'A' },
+    terms: ['I_t =', `I_n \\cdot \\frac{R_g}{R_g + R_t}`],
+    subst: `I_t = ${texQty(In, 'A', { paren: true })} \\cdot \\frac{${texQty(Rth, 'Ω')}}{${texQty(Rth, 'Ω')} + ${texQty(RL, 'Ω')}}`,
+    result: { symbol: 'I_t', value: (In * Rth) / (Rth + RL), unit: 'A' },
     circuit: no.circuit,
     highlight: { elements: [no.ids.load], arrows: [{ element: no.ids.load, kind: 'I', value: (In * Rth) / (Rth + RL) }] },
     group: 'Helyettesítő képek',

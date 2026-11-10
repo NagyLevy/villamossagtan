@@ -17,6 +17,7 @@ import { button, iconButton, segmented, select, slider, toast, toggle } from './
 import { h, icon, ICONS } from './dom';
 import { isLite, setLite } from './perf';
 import { loadSettings, methodList, saveSettings, type MethodId, type Mode, type Settings, type ThemeChoice } from './settings';
+import { openTopicWheel } from './wheel';
 import { fieldAnswerText, scoreTask, TaskViewer, type Score } from './viewer';
 import { formatNumber } from '../units';
 
@@ -103,17 +104,37 @@ export function startApp(root: HTMLElement): void {
   const topicPicker = (onChange: () => void): HTMLElement => {
     const dc = settings.domain === 'dc';
     const topics = dc ? DC_TOPICS : AC_TOPICS;
-    const topicSel = select<string>(
-      'Témakör',
-      topics.map((t) => ({ value: t.id, label: t.name })),
-      dc ? settings.dcTopic : settings.acTopic,
-      (v) => {
-        if (dc) update({ dcTopic: v as Topic });
-        else update({ acTopic: v as AcTopic });
-        syncLevel();
-        hint.textContent = topics.find((t) => t.id === v)?.hint ?? '';
-        onChange();
+    const topicId = () => (dc ? settings.dcTopic : settings.acTopic);
+    // A témakör gombja a kör alakú választót nyitja (wheel.ts); ott a nehézség is állítható.
+    const topicName = h('span', { class: 'topic-btn-name', text: topics.find((t) => t.id === topicId())?.name ?? '' });
+    const topicBtn = h(
+      'button',
+      {
+        class: 'select topic-btn',
+        attrs: { type: 'button', 'aria-haspopup': 'dialog', title: 'Témakör választása' },
+        on: {
+          click: () =>
+            openTopicWheel({
+              items: topics,
+              current: topicId(),
+              levels,
+              level: dc ? settings.dcLevel : settings.acLevel,
+              fixedLevel: (id) => (dc && id === 'zh' ? 'ZH-szint' : null),
+              onPick: (id, lv) => {
+                if (dc) update({ dcTopic: id as Topic, dcLevel: lv as Level });
+                else update({ acTopic: id as AcTopic, acLevel: lv as AcLevel });
+                topicName.textContent = topics.find((t) => t.id === id)?.name ?? '';
+                levelSel.set(lv);
+                syncLevel();
+                hint.textContent = topics.find((t) => t.id === id)?.hint ?? '';
+                onChange();
+              },
+            }),
+        },
       },
+      h('span', { class: 'topic-btn-mark', attrs: { 'aria-hidden': 'true' } }),
+      topicName,
+      icon(ICONS.chevron, 12),
     );
     const levels = dc ? DC_LEVELS : AC_LEVELS;
     const levelSel = select<string>(
@@ -132,7 +153,7 @@ export function startApp(root: HTMLElement): void {
     };
     syncLevel();
     const hint = h('span', { class: 'picker-hint', text: topics.find((t) => t.id === (dc ? settings.dcTopic : settings.acTopic))?.hint ?? '' });
-    return h('div', { class: 'picker' }, h('label', { class: 'picker-field' }, h('span', { text: 'Témakör' }), topicSel.el), h('label', { class: 'picker-field' }, h('span', { text: 'Nehézség' }), levelSel.el), hint);
+    return h('div', { class: 'picker' }, h('div', { class: 'picker-field' }, h('span', { text: 'Témakör' }), topicBtn), h('label', { class: 'picker-field' }, h('span', { text: 'Nehézség' }), levelSel.el), hint);
   };
 
   /** A gyakorló feladat: egyenáramnál a választott módszerhez illő, ha talál ilyet. */

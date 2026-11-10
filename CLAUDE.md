@@ -107,11 +107,11 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
 - **Helyettesítő generátor** (`thevenin.ts`): jelölés Rg, Uü, In (nem Rth, Uth). Rg = R_AB a források
   kiiktatásával, **mindig üresjárásban**. Uü forrásonként (szuperpozíció) eredővel és osztókkal, a
   részfeszültség iránya (A→B) vagy (B→A), a végén előjeles összeg; csomóponti módszer csak, ha egy
-  részáramkör nem bontható. In = Uü / Rg (nincs külön rövidzárási számolás). Illesztés: Rt = Rg,
+  részáramkör nem bontható. In = Uü / Rg (nincs külön rövidzárási számolás). A terhelés neve mindenhol Rt, az árama It (nem RL, IL). Illesztés: Rt = Rg,
   Pmax = Uü² / (4 Rg). A Thevenin-témakörben a „Szuperpozíció” módszer is ezt a menetet adja.
 - **„A tanár úr feladattípusai” témakör** (`tanari`, `teacherDraft` a `generate.ts`-ben, `teacherType`):
   a füzet négy típusa, módszerenként egy — szuperpozíció (2 feszültség- + 1 áramforrás, forrásonkénti
-  részáramok osztókkal + összeg), helyettesítő generátor (≥ 2 forrás, Rg, Uü, In, IL, Pmax),
+  részáramok osztókkal + összeg), helyettesítő generátor (≥ 2 forrás, Rg, Uü, In, It, Pmax),
   hurokáram (áramforrás(ok) ismert hurokkal, ágáram + az áramforrás feszültsége), csomóponti
   potenciál (4 csomópont). Ebben a témakörben a módszerfül mindig a saját típusát hozza
   (`fit.ts`, `app.ts` `pickMethod`). Teszt: `src/tests/teacher.test.ts`.
@@ -145,6 +145,8 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   módszer alatt): Ohm-törvény minden ellenállásra, n − 1 csomóponti és b − n + 1 hurokegyenlet „= 0” alakban,
   behelyettesítő megoldás; áramforrásnál a forrás feszültsége az ismeretlen. Teszt: `fullsystem.test.ts`.
 - „A tanár úr feladattípusai” és a „Valódi generátor terhelése” témakör egyelőre nincs a választóban (`DC_TOPICS`).
+- A témakört **kör alakú választó** adja (`src/ui/wheel.ts`): a témakörök egy gyűrű cikkei, középen a név és a
+  nehézség (‹ ›); rámutatás kijelöl, kattintás választ; ← → ↑ ↓, Enter, Esc. A nehézség mellette legördülő is maradt.
 - A „Teljes megoldás” gomb a lejátszást az első lépéstől indítja.
 
 ### Módok
