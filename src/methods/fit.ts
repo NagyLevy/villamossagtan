@@ -44,6 +44,7 @@ export function methodFit(m: MethodId, p: Problem, relaxed = false): Fit {
     case 'redukcio':
       return { ok: sources <= 1, why: sources === 0 ? 'Soros-párhuzamos hálózat: elég lépésenként összevonni.' : 'Egy forrás, soros-párhuzamos hálózat: elég összevonni és osztani.' };
     case 'kirchhoff':
+      if (p.topic === 'halozat') return { ok: true, why: 'Teljes hálózatanalízis: Ohm-törvény, csomóponti és hurokegyenletek, egyenletrendszer.' };
       return { ok: p.topic === 'kirchhoff', why: 'Egyetlen csomóponti vagy huroktörvény elég hozzá.' };
     case 'thevenin':
       return { ok: p.topic === 'thevenin', why: 'Egy terhelés a kérdés: a többi rész helyettesíthető egy generátorral.' };
@@ -94,6 +95,7 @@ export function recommendMethod(p: Problem): { method: MethodId; why: string } {
   const usable = applicableMethods(p);
   const has = (m: MethodId) => usable.includes(m);
   if (p.topic === 'tanari' && p.teacherType && has(p.teacherType)) return { method: p.teacherType, why: TEACHER_WHY[p.teacherType] ?? '' };
+  if (p.topic === 'halozat' && has('kirchhoff')) return { method: 'kirchhoff', why: 'Teljes hálózatanalízis: Ohm-törvény, csomóponti és hurokegyenletek, egyenletrendszer.' };
   if (p.topic === 'kirchhoff' && has('kirchhoff')) return { method: 'kirchhoff', why: 'Egyetlen csomóponti vagy huroktörvény elég hozzá.' };
   if (p.topic === 'thevenin' && has('thevenin')) return { method: 'thevenin', why: 'Kapocspárra vonatkozó kérdés: először Rb (Rg), aztán az üresjárási feszültség.' };
   const sources = p.stats.sources;

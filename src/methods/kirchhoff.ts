@@ -5,6 +5,7 @@
 import type { Problem } from '../generator/generate';
 import type { Question } from '../generator/questions';
 import { toNetlist } from '../solver/netlist';
+import { solveFullSystem } from './fullsystem';
 import { texNum, texOf, texQty } from './tex';
 import type { MethodResult, Step } from './types';
 
@@ -15,6 +16,8 @@ export interface KirchhoffOptions {
 
 export function solveKirchhoff(p: Problem, opts: KirchhoffOptions = {}): MethodResult {
   const q = p.questions.find((x) => x.given && (x.node !== undefined || x.loop));
+  // Teljes hálózatanalízis: a Kirchhoff-egyenletek teljes rendszere (ágáramok módszere).
+  if (!q && p.questions.some((x) => x.kind === 'table')) return solveFullSystem(p);
   if (!q) return { ok: false, reason: 'Ehhez a feladathoz a Kirchhoff-féle "ismeretlen kiszámítása" lépés nem illik; válassz más módszert.' };
   return q.node !== undefined ? kcl(p, q, opts) : kvl(p, q, opts);
 }
