@@ -77,6 +77,7 @@ export function startApp(root: HTMLElement): void {
       route();
     },
   );
+  modeSeg.el.classList.add('seg-tabs');
   const settingsBtn = h('button', { class: 'btn btn-quiet settings-btn', attrs: { type: 'button' }, on: { click: () => openSettings() } }, icon(ICONS.settings, 16), h('span', { text: 'Beállítások' }));
   const header = h(
     'header',
