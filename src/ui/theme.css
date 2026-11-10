@@ -1597,14 +1597,34 @@ h2.daily-title {
   fill: var(--c, var(--accent));
 }
 
-.builder-tool.is-hint {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--hair);
-  color: var(--ink-2);
-  opacity: 0.6;
-  cursor: default;
+/* Művelet az eszközök után (nem választható eszköz): elválasztó, kitöltött gomb, a billentyű jelvényként. */
+.builder-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 6px;
+  background: var(--hair-2);
 }
 
-.builder-tool.is-hint:hover {
-  box-shadow: inset 0 0 0 1px var(--hair);
+.builder-tool.is-action {
+  background: var(--fill);
+  box-shadow: none;
+}
+
+.builder-tool.is-action:hover {
+  background: var(--fill-2);
+  box-shadow: none;
+}
+
+.builder-tool.is-action:active {
+  transform: scale(0.97);
+}
+
+.builder-tool.is-action kbd {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 12.5px;
 }

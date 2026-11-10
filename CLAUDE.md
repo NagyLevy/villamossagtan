@@ -168,11 +168,11 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   Shift + húzással is mozgatható; a „Kósza elemek törlése” gomb a zárt körbe nem kötött (szaggatott) elemeket törli;
   a tábla alatt rövid útmutató áll. Az elemek neve a **letevés sorrendjét** követi (R1, R2, R3 …; Ug1 …; Ig1 …, `Part.n`):
   áthelyezéskor megmarad, az új elem a legkisebb szabad számot kapja (nem az értékből és nem a helyből jön). A sorszám az
-  alsó sávban kézzel is átírható (`renumber`); foglalt számnál a két elem számot cserél. A radír lenyomva
-  húzható, mint a rajzprogramokban: amin áthalad, törli (egy visszavonási lépés). Eszközök gyorsbillentyűi (a gombokon
-  zárójelben): V vezeték, E ellenállás, F feszültségforrás, A áramforrás, R radír, M mozgatás. A **Q** nem eszköz:
-  annak a forrásnak a nyilát fordítja meg, amelyik fölött az egér áll (vagy a kijelöltét), eszközváltás nélkül; az
-  eszköztáron szürke, nem kattintható „Nyíl megfordítása (Q)” emlékeztető áll. Az az elem, amelyik fölött az egér
+  alsó sávban kézzel is átírható (`renumber`); foglalt számnál a két elem számot cserél. Eszközök gyorsbillentyűi (a gombokon
+  zárójelben): V vezeték, E ellenállás, F feszültségforrás, A áramforrás, M mozgatás. Két **művelet** nem eszköz
+  (nem marad bekapcsolva; az eszköztár végén, elválasztó után állnak): **Q** = nyíl megfordítása (az egér alatti,
+  vagy a kijelölt forrásé), **R** = radír (törli az egér alatti vagy a kijelölt elemet; nyomva tartva és az egeret
+  húzva mindent, amin áthalad, egy visszavonási lépésben). A gombjuk a kijelölt elemre hat. Az az elem, amelyik fölött az egér
   áll, kattintás nélkül is kiemelve látszik. A fül mellett „Béta”. Minden változás után újraszámol: táblázat minden elem
   U, I, P értékével (MNA), alatta a megoldás nézete (`solved` nézet), ahol minden alkalmazható módszer levezetése
   választható, és a módszerek össze vannak vetve. A lógó végek kimaradnak, a hibás rajzra (nincs forrás, rövidre
