@@ -13,7 +13,7 @@ export type { MethodId };
 export type StarDeltaMode = 'delta-csillag' | 'csillag-delta' | 'veletlen';
 export type ThemeChoice = 'system' | 'light' | 'dark';
 /** Gyakorlás, időre megoldás, próbavizsga, napi feladatsor. */
-export type Mode = 'gyakorlas' | 'idore' | 'vizsga' | 'napi';
+export type Mode = 'gyakorlas' | 'idore' | 'vizsga' | 'napi' | 'epito';
 
 export interface Settings {
   domain: Domain;

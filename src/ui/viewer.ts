@@ -40,6 +40,8 @@ export interface LoadOptions {
   banner?: HTMLElement | null;
   /** Látszik-e az "Új feladat" gomb (csak szabad gyakorlásnál). */
   allowNew?: boolean;
+  /** Kész megoldás nézet (áramkör-építő): minden lépés rögtön látszik, nincs válaszmező, a módszerek összevetése nyitva. */
+  solved?: boolean;
 }
 
 export interface ViewerHooks {
@@ -71,6 +73,7 @@ export class TaskViewer {
   private method: MethodId = 'redukcio';
   private mode: ViewerMode = 'practice';
   private lockedMethod = false;
+  private solvedView = false;
   private submitted = false;
   private revealed = 0;
   private showAll = false;
@@ -203,8 +206,9 @@ export class TaskViewer {
     this.tableSummary.clear();
     this.allCorrectFired = false;
     this.revealed = 0;
-    this.showAll = false;
-    this.verifyOpen = false;
+    this.showAll = !!opts.solved;
+    this.verifyOpen = !!opts.solved;
+    this.solvedView = !!opts.solved;
     this.trickText = '';
     this.reverse = false;
     this.lastIndex = -1;
@@ -381,7 +385,7 @@ export class TaskViewer {
       const chart = loadChart(t.dc);
       if (chart) parts.push(chart);
     }
-    parts.push(this.answersSection());
+    if (!this.solvedView) parts.push(this.answersSection());
     this.panel.replaceChildren(...parts);
   }
 
@@ -422,6 +426,12 @@ export class TaskViewer {
     );
   }
 
+  /** Az építő nézetében a sor neve a mennyiség (pl. „I (R4)”), nem a kérdés betűjele. */
+  private verifyLabel(questionId: string): string {
+    const q = this.task!.dc!.questions.find((x) => x.id === questionId);
+    return q?.target ? `${q.kind === 'U' ? 'U' : q.kind === 'P' ? 'P' : 'I'} (${q.target})` : '–';
+  }
+
   private verifyView(): HTMLElement {
     const v = verify(this.task!.dc!);
     const names = new Map(methodList(true).map((m) => [m.id, m.label]));
@@ -446,7 +456,7 @@ export class TaskViewer {
               h(
                 'tr',
                 {},
-                h('td', { text: v.rows.length > 1 ? `${String.fromCharCode(97 + i)})` : '1.' }),
+                h('td', { text: this.solvedView ? this.verifyLabel(r.questionId) : v.rows.length > 1 ? `${String.fromCharCode(97 + i)})` : '1.' }),
                 h('td', { text: fmt(r.reference, r.unit) }),
                 ...v.methods.map((m) => h('td', { class: r.byMethod[m] === undefined ? '' : ok(r.byMethod[m], r.reference) ? 'is-ok-text' : 'is-neg', text: r.byMethod[m] === undefined ? '–' : `${fmt(r.byMethod[m], r.unit)} ${ok(r.byMethod[m], r.reference) ? '✓' : '✗'}` })),
               ),
