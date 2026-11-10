@@ -19,6 +19,28 @@ export interface Part {
   value: number;
   /** Forrás iránya az él bal→jobb / fent→lent irányához képest (lásd CircuitElement.dir). */
   dir: 1 | -1;
+  /** Sorszám a letevés sorrendjében, fajtánként (R1, R2 …; Ug1 …; Ig1 …). A név ebből jön, és áthelyezéskor megmarad. */
+  n?: number;
+}
+
+const NAME_PREFIX: Record<PartKind, string> = { W: '', R: 'R', V: 'Ug', I: 'Ig' };
+
+/** Az elem neve a sorszámából (R3, Ug1 …); vezetéknek és sorszám nélküli (régi) elemnek nincs. */
+export function partName(part: Part): string | null {
+  return part.kind === 'W' || !part.n ? null : `${NAME_PREFIX[part.kind]}${part.n}`;
+}
+
+/** A következő szabad sorszám az adott fajtából (a legkisebb, ami még nincs használatban). */
+export function nextNumber(board: Board, kind: PartKind): number {
+  const used = new Set(Object.values(board.parts).filter((p) => p.kind === kind).map((p) => p.n));
+  let n = 1;
+  while (used.has(n)) n++;
+  return n;
+}
+
+/** Sorszám nélküli elemek (régi mentés) pótlása; a meglévő sorszámok nem változnak. */
+export function numberParts(board: Board): void {
+  for (const part of Object.values(board.parts)) if (part.kind !== 'W' && !part.n) part.n = nextNumber(board, part.kind);
 }
 
 /**
@@ -115,10 +137,16 @@ export function buildProblem(board: Board): BuildResult {
   });
   const raw: Circuit = { points: [...used.entries()].map(([id, [x, y]]) => ({ id, x: (x - minX) * 2, y: (y - minY) * 2 })), branches };
   const circuit = finalize(raw);
+  // Nevek: ha minden elemnek van (egyedi) sorszáma, a név a letevés sorrendjét követi (R1, R2 …); különben marad
+  // a rajzoló szokásos elnevezése (érték szerint, vagy olvasási sorrendben).
+  const own = [...parts.values()].map((p) => partName(p)).filter((x): x is string => x !== null);
+  const numbered = own.length === kinds.filter((k) => k !== 'W').length && new Set(own).size === own.length;
   const names = new Map<EdgeKey, string>();
   for (const b of circuit.branches) {
     const src = branches.find((x) => x.from === b.from && x.to === b.to)!;
-    if (b.elements[0]) names.set(src.key, b.elements[0].id);
+    if (!b.elements[0]) continue;
+    if (numbered) b.elements[0].id = partName(parts.get(src.key)!)!;
+    names.set(src.key, b.elements[0].id);
   }
 
   const map = toNetlist(circuit);
@@ -163,11 +191,11 @@ export function buildProblem(board: Board): BuildResult {
 /** Kezdő példa: feszültségforrás, két soros ellenállás, a másodikkal párhuzamosan egy harmadik. */
 export function exampleBoard(cols = 7, rows = 4): Board {
   const parts: Record<EdgeKey, Part> = {
-    'v:1:1': { kind: 'V', value: 12, dir: -1 },
-    'h:1:1': { kind: 'R', value: 4, dir: 1 },
+    'v:1:1': { kind: 'V', value: 12, dir: -1, n: 1 },
+    'h:1:1': { kind: 'R', value: 4, dir: 1, n: 1 },
     'h:2:1': { kind: 'W', value: 0, dir: 1 },
-    'v:2:1': { kind: 'R', value: 6, dir: 1 },
-    'v:3:1': { kind: 'R', value: 3, dir: 1 },
+    'v:2:1': { kind: 'R', value: 6, dir: 1, n: 2 },
+    'v:3:1': { kind: 'R', value: 3, dir: 1, n: 3 },
     'h:1:2': { kind: 'W', value: 0, dir: 1 },
     'h:2:2': { kind: 'W', value: 0, dir: 1 },
   };

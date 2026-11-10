@@ -1530,3 +1530,24 @@ h2.daily-title {
     min-height: 320px;
   }
 }
+
+/* Építő: rövid útmutató a tábla alatt. */
+.builder-guide {
+  margin: 0;
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--hair);
+  background: var(--surface-2);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.builder-actions .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (hover: none) {
+  .builder-guide {
+    display: none;
+  }
+}
