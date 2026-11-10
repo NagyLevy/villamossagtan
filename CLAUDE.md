@@ -140,17 +140,29 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   (`src/tests/ac.test.ts`). Új feladattípusnál ilyen teszt is kell.
 - Bekapcsolásnál a hálózat a kapcsoló zárása előtt energiamentes; τ a Thevenin-ellenállásból.
 
+### Teljes hálózatanalízis és a választó
+- A **Teljes hálózatanalízis** alapmegoldása egyenletrendszer (`src/methods/fullsystem.ts`, a „Kirchhoff-törvények”
+  módszer alatt): Ohm-törvény minden ellenállásra, n − 1 csomóponti és b − n + 1 hurokegyenlet „= 0” alakban,
+  behelyettesítő megoldás; áramforrásnál a forrás feszültsége az ismeretlen. Teszt: `fullsystem.test.ts`.
+- „A tanár úr feladattípusai” és a „Valódi generátor terhelése” témakör egyelőre nincs a választóban (`DC_TOPICS`).
+- A „Teljes megoldás” gomb a lejátszást az első lépéstől indítja.
+
 ### Módok
 - **Gyakorlás:** azonnali ellenőrzés, tipp lépésenként, teljes megoldás; egyenáramnál a módszer
   egy legördülőből választható (ha a mostani feladathoz nem jó, illő feladat jön).
 - **Időre:** egy feladat, visszaszámláló óra; a megoldás beadás vagy lejárat után látszik.
-- **Próbavizsga:** teljes feladatsor (egyenáram 5 / szinuszos 10 / vegyes 7 feladat) közös órával,
-  beadás után összesítés és feladatonkénti megoldás. Pontrendszer, ranglista nincs.
+- **Próbavizsga:** három sor közös órával: Egyenáram (5 véletlen feladat a két korábbi sor – Villamosságtan 1
+  és a tanári 1. ZH – közös készletéből; minden feladat fölött ott az előírt módszer, `prescribedMethod`,
+  `fit.ts`), Váltóáram (10), Vegyes (7). Külön „tanári formátum” nincs a választóban (az `examTasks('zh1')`
+  sor a tesztek miatt megmaradt). Beadás után összesítés és feladatonkénti megoldás. Pontrendszer, ranglista nincs.
 - **Napi feladatok:** naponta új sor, mindenkinek ugyanaz (seed: `D{nap}-{terület}-{fokozat}-{sorszám}`),
   csak a kész feladatok jelölése marad meg a böngészőben.
 - A rajz nézete nem mozog (nincs automatikus nagyítás): a kiemelés és a feliratok mutatják a lépést.
 
 ## Stílus
-- Apple-szerű, letisztult felület, világos és sötét mód; telefonon is használható (`@media (max-width: 640px)`).
+- Arculat: „műszaki füzet” (`src/ui/theme.css` az `app.css` fölött, színek a `tokens.css`-ben): IBM Plex Sans
+  betű (csomagból, nem külső szerverről), kék-fekete tinta, négyzetrács a rajz alatt, a megoldás lépései
+  idővonalon; sötét módban „tervrajz” (sötétkék). Letisztult maradjon; telefonon is használható
+  (`@media (max-width: 640px)`).
 - A meglévő kód stílusát kövesd (elnevezések, magyar megjegyzések, kis tiszta függvények).
 - Hardveres gyorsítás nélkül akadhat az elmosás: van „könnyített grafika” mód (`src/ui/perf.ts`).

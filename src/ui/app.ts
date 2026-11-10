@@ -7,7 +7,7 @@ import { randomSeed } from '../generator/rng';
 import type { Level } from '../generator/values';
 import type { AcLevel, AcTopic } from '../ac/problems';
 import { solveWith } from '../methods';
-import { methodFit, recommendMethod } from '../methods/fit';
+import { methodFit, prescribedMethod } from '../methods/fit';
 import { dailyProblem } from '../daily/problem';
 import { DAILY_LEVELS, dailyChallenge, dayKey, msUntilNext, type DailyLevel } from '../daily/schedule';
 import { isDone, loadProgress, markDone, streak } from '../daily/progress';
@@ -16,7 +16,7 @@ import type { Domain, Task } from '../tasks/types';
 import { button, iconButton, segmented, select, slider, toast, toggle } from './components';
 import { h, icon, ICONS } from './dom';
 import { isLite, setLite } from './perf';
-import { loadSettings, saveSettings, type MethodId, type Mode, type Settings, type ThemeChoice } from './settings';
+import { loadSettings, methodList, saveSettings, type MethodId, type Mode, type Settings, type ThemeChoice } from './settings';
 import { fieldAnswerText, scoreTask, TaskViewer, type Score } from './viewer';
 import { formatNumber } from '../units';
 
@@ -36,6 +36,8 @@ export function startApp(root: HTMLElement): void {
     settings.domain = 'dc';
     if (AC_EXAMS.includes(settings.examKind)) settings.examKind = 'dc';
   }
+  // A választóból kivett vizsgafajta (pl. a régi külön 1. ZH) helyett az egyenáramú sor jön.
+  if (!EXAMS.some((e) => e.kind === settings.examKind)) settings.examKind = 'dc';
   const update = (patch: Partial<Settings>) => {
     Object.assign(settings, patch);
     saveSettings(settings);
@@ -67,7 +69,7 @@ export function startApp(root: HTMLElement): void {
       route();
     },
   );
-  domainSeg.el.title = 'Egyenáram: Villamosságtan 1 · Váltóáram: Villamosságtan 2 (szinuszos hálózatok, rezgőkörök, bekapcsolás)';
+  domainSeg.el.title = 'Egyenáram: Villamosságtan 1 · Váltóáram: Villamosságtan 2 (impedancia, rezgőkörök, bekapcsolás)';
   const modeSeg = segmented<Mode>(
     'Mód',
     (Object.keys(MODE_NAMES) as Mode[]).map((m) => ({ value: m, label: MODE_NAMES[m] })),
@@ -77,6 +79,7 @@ export function startApp(root: HTMLElement): void {
       route();
     },
   );
+  modeSeg.el.classList.add('seg-tabs');
   const settingsBtn = h('button', { class: 'btn btn-quiet settings-btn', attrs: { type: 'button' }, on: { click: () => openSettings() } }, icon(ICONS.settings, 16), h('span', { text: 'Beállítások' }));
   const header = h(
     'header',
@@ -353,7 +356,10 @@ export function startApp(root: HTMLElement): void {
         i < tasks.length - 1 ? button('Következő →', () => open(i + 1), 'secondary') : null,
       );
       body.replaceChildren(nav, viewer.el);
-      viewer.load(t, { mode: 'test', method: t.dc ? bestMethod(t) : undefined, answers: answers[i], submitted });
+      // Egyenáramú feladatnál megadjuk a módszert is, amivel számolni kell (a megoldás is ezzel készül).
+      const method = t.dc ? bestMethod(t) : undefined;
+      const banner = method ? h('p', { class: 'exam-method' }, h('span', { text: 'Ezzel a módszerrel számold: ' }), h('strong', { text: methodName(t, method) })) : null;
+      viewer.load(t, { mode: 'test', method, answers: answers[i], submitted, banner });
       renderTabs();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -418,10 +424,16 @@ export function startApp(root: HTMLElement): void {
     open(0);
   };
 
+  /** A módszer neve a vizsgafeladat fölé (az Ohm-törvényes alapfeladatnál nem „redukció”). */
+  const methodName = (t: Task, m: MethodId): string => {
+    if (t.dc?.topic === 'ohm') return 'Ohm-törvény és teljesítmény';
+    return methodList(true).find((x) => x.id === m)?.label ?? m;
+  };
+
   /** Egyenáramú feladathoz a legkézenfekvőbb módszer (próbavizsgában ezzel mutatjuk a megoldást). */
   const bestMethod = (t: Task): MethodId => {
     // A tanár úr döntési sorrendje szerint a legkevesebb munkával járó módszer.
-    return recommendMethod(t.dc!).method;
+    return prescribedMethod(t.dc!);
   };
 
   // ───────── Napi feladatok ─────────

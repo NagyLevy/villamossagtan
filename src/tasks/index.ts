@@ -109,10 +109,11 @@ export interface ExamInfo {
   description: string;
 }
 
+// Az 'zh1' (a régi 1. ZH-k rögzített sorrendje) a választóban már nem külön vizsga: a feladattípusai
+// az egyenáramú próbavizsga véletlen sorába kerültek. A sor maga megmaradt (`examTasks('zh1', …)`).
 export const EXAMS: ExamInfo[] = [
-  { kind: 'dc', name: 'Villamosságtan 1 (egyenáram)', minutes: 45, description: '5 feladat: eredő ellenállás, hálózatszámítás, osztók, teljesítmény, Thevenin.' },
-  { kind: 'zh1', name: '1. ZH (tanári formátum)', minutes: 90, description: 'A korábbi 1. ZH-k felépítése: 1. eredő csillag-deltával, 2. hurokáram ismert hurokkal, 3. osztók egy képletben, 4. teljesítmény, 5. üresjárási feszültség, rövidzárási áram, belső ellenállás.' },
-  { kind: 'ac', name: 'Villamosságtan 2 (szinuszos)', minutes: 90, description: '10 feladat: impedancia, fazorok, teljesítmény, helyettesítő generátor, rezgőkör, bekapcsolás.' },
+  { kind: 'dc', name: 'Egyenáram', minutes: 60, description: '5 véletlen feladat a ZH-k típusaiból: eredő (csillag-deltával is), osztók, teljesítmény, hurokáram, csomóponti potenciál, szuperpozíció, helyettesítő generátor. Minden feladatnál megadjuk, milyen módszerrel számold.' },
+  { kind: 'ac', name: 'Váltóáram', minutes: 90, description: '10 feladat: impedancia, fazorok, teljesítmény, helyettesítő generátor, rezgőkör, bekapcsolás.' },
   { kind: 'vegyes', name: 'Vegyes (év végi)', minutes: 60, description: '7 feladat mindkét félév anyagából.' },
 ];
 
@@ -122,14 +123,27 @@ export function examTasks(kind: ExamKind, seed: string): Task[] {
   const s = (i: number) => `${seed}-${i}`;
   const dc = (i: number, topic: Topic, level: Level, starDelta = false): Task => makeTask({ domain: 'dc', topic, level, seed: s(i), starDelta });
   const ac = (i: number, topic: AcTopic, level: AcLevel = 'nehez'): Task => makeTask({ domain: 'ac', topic, level, seed: s(i) });
-  if (kind === 'dc')
-    return [
-      dc(0, 'eredo', 'kozepes', rng.chance(0.6)),
-      dc(1, 'zh', 'zh'),
-      dc(2, 'oszto', 'kozepes'),
-      dc(3, 'ohm', 'nehez'),
-      dc(4, 'thevenin', 'kozepes', rng.chance(0.4)),
+  if (kind === 'dc') {
+    // A két korábbi egyenáramú sor (Villamosságtan 1 és az 1. ZH) feladattípusai egy közös készletben:
+    // ebből 5 véletlen, különböző típus jön.
+    const teacher = (i: number, teacherType: TeacherType): Task => makeTask({ domain: 'dc', topic: 'tanari', level: 'kozepes', seed: s(i), teacherType });
+    const pool: ((i: number) => Task)[] = [
+      (i) => dc(i, 'eredo', 'kozepes', rng.chance(0.6)),
+      (i) => dc(i, 'csillag-delta', 'kozepes', true),
+      (i) => dc(i, 'zh', 'zh'),
+      (i) => dc(i, 'oszto', 'kozepes'),
+      (i) => dc(i, 'oszto', 'nehez'),
+      (i) => dc(i, 'ohm', 'nehez'),
+      (i) => makeTask({ domain: 'dc', topic: 'oszto', level: 'nehez', seed: s(i), askPower: rng.chance(0.5) ? 'R' : 'source' }),
+      (i) => dc(i, 'thevenin', 'kozepes', rng.chance(0.4)),
+      (i) => dc(i, 'tobbforras', 'kozepes'),
+      (i) => teacher(i, 'hurokaram'),
+      (i) => teacher(i, 'csomoponti'),
+      (i) => teacher(i, 'szuperpozicio'),
+      (i) => teacher(i, 'thevenin'),
     ];
+    return rng.sample(pool, 5).map((make, i) => make(i));
+  }
   if (kind === 'zh1')
     return [
       dc(0, 'csillag-delta', 'kozepes', true),

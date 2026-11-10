@@ -210,7 +210,9 @@ export class TaskViewer {
     this.lastIndex = -1;
     this.bannerSlot.replaceChildren(...(opts.banner ? [opts.banner] : []));
     // A feladat kódja (seed) hibabejelentéshez: ugyanazzal a kóddal ugyanez a feladat jön.
-    this.metaText.textContent = [task.topicName, task.meta, `kód: ${task.seed}`].filter(Boolean).join(' · ');
+    // Címkék: témakör, szint és méret külön-külön, a végén a feladat kódja.
+    const tags = [task.topicName, ...(task.meta ?? '').split(' · ')].filter(Boolean);
+    this.metaText.replaceChildren(...tags.map((t, i) => h('span', { class: i === 0 ? 'tag tag-topic' : 'tag', text: t })), h('span', { class: 'tag tag-code', text: task.seed, attrs: { title: 'A feladat kódja' } }));
     this.title.textContent = task.title;
     this.given.replaceChildren(...(task.given ?? []).map((g) => h('span', { class: 'given-item', html: tex(g) })));
     this.given.hidden = !task.given?.length;
