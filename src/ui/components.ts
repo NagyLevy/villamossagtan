@@ -218,8 +218,9 @@ export function toast(message: string): void {
   const el = h('div', { class: 'toast', attrs: { role: 'status' }, text: message });
   document.body.append(el);
   requestAnimationFrame(() => el.classList.add('is-in'));
+  // Hosszabb szöveg tovább marad kint, hogy el lehessen olvasni (1,6–6 másodperc).
   setTimeout(() => {
     el.classList.remove('is-in');
     setTimeout(() => el.remove(), 400);
-  }, 1600);
+  }, Math.min(6000, Math.max(1600, message.length * 55)));
 }
