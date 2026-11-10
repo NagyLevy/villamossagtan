@@ -17,6 +17,8 @@ const NS = 'http://www.w3.org/2000/svg';
 type Tool = 'wire' | 'R' | 'V' | 'I' | 'erase' | 'pan';
 
 const TOOL_NAMES: Record<Tool, string> = { wire: 'Vezeték', R: 'Ellenállás', V: 'Feszültségforrás', I: 'Áramforrás', erase: 'Radír', pan: 'Mozgatás' };
+/** Gyorsbillentyűk az eszközökhöz (a gombokon zárójelben látszanak). */
+const TOOL_KEY: Record<Tool, string> = { wire: 'V', R: 'E', V: 'F', I: 'A', erase: 'R', pan: 'M' };
 const UNIT_OF: Record<PartKind, Unit> = { W: '', R: 'Ω', V: 'V', I: 'A' };
 const KIND_NAME: Record<PartKind, string> = { W: 'vezeték', R: 'ellenállás', V: 'feszültségforrás', I: 'áramforrás' };
 
@@ -893,8 +895,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   for (const t of ['wire', 'R', 'V', 'I', 'erase', 'pan'] as Tool[]) {
     const b = h('button', {
       class: 'builder-tool',
-      attrs: { type: 'button', 'aria-pressed': String(t === tool), title: TOOL_NAMES[t] },
-      html: `<svg width="28" height="24" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TOOL_ICON[t]}</svg><span>${TOOL_NAMES[t]}</span>`,
+      attrs: { type: 'button', 'aria-pressed': String(t === tool), title: `${TOOL_NAMES[t]} (${TOOL_KEY[t]} billentyű)`, 'aria-keyshortcuts': TOOL_KEY[t] },
+      html: `<svg width="28" height="24" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TOOL_ICON[t]}</svg><span>${TOOL_NAMES[t]}</span><kbd>(${TOOL_KEY[t]})</kbd>`,
     });
     toolBtns.set(t, b);
     b.addEventListener('click', () => setTool(t));
@@ -987,7 +989,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   syncHistory();
   const guide = h('p', {
     class: 'builder-guide',
-    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Ctrl + Shift + Z: újra · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése · elemre kattintva alul átírható a sorszáma (R1, R2 …) és az értéke',
+    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Ctrl + Shift + Z: újra · eszközök: a gombokon zárójelben álló betű (V, E, F, A, R, M) · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése · elemre kattintva alul átírható a sorszáma (R1, R2 …) és az értéke',
   });
 
   const root = h(
@@ -1023,6 +1025,14 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       e.preventDefault();
       remove(selected);
     } else if (e.key === 'Escape') setTool('wire');
+    else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Eszközváltás gyorsbillentyűvel: V vezeték, E ellenállás, F feszültségforrás, A áramforrás, R radír, M mozgatás.
+      const t = (Object.keys(TOOL_KEY) as Tool[]).find((k) => TOOL_KEY[k] === e.key.toUpperCase());
+      if (t) {
+        e.preventDefault();
+        setTool(t);
+      }
+    }
   };
   document.addEventListener('keydown', onKey);
 

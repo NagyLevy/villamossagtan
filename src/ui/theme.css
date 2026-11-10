@@ -1564,3 +1564,21 @@ h2.daily-title {
   width: 5ch;
   text-align: center;
 }
+
+/* Építő: az eszköz gyorsbillentyűje a gombon, zárójelben. */
+.builder-tool kbd {
+  font: inherit;
+  font-weight: 450;
+  color: var(--ink-2);
+}
+
+.builder-tool[aria-pressed='true'] kbd {
+  color: inherit;
+  opacity: 0.75;
+}
+
+@media (max-width: 640px) {
+  .builder-tool kbd {
+    display: none;
+  }
+}
