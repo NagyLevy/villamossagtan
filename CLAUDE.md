@@ -145,6 +145,8 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   módszer alatt): Ohm-törvény minden ellenállásra, n − 1 csomóponti és b − n + 1 hurokegyenlet „= 0” alakban,
   behelyettesítő megoldás; áramforrásnál a forrás feszültsége az ismeretlen. Teszt: `fullsystem.test.ts`.
 - „A tanár úr feladattípusai” és a „Valódi generátor terhelése” témakör egyelőre nincs a választóban (`DC_TOPICS`).
+- A témakört **kör alakú választó** adja (`src/ui/wheel.ts`): a témakörök egy gyűrű cikkei, középen a név és a
+  nehézség (‹ ›); rámutatás kijelöl, kattintás választ; ← → ↑ ↓, Enter, Esc. A nehézség mellette legördülő is maradt.
 - A „Teljes megoldás” gomb a lejátszást az első lépéstől indítja.
 
 ### Módok
