@@ -25,16 +25,58 @@ export interface WheelOptions {
   onPick: (id: string, level: string) => void;
 }
 
-/** Rövid jel és felirat a cikkekbe (a teljes név középen látszik). */
+/**
+ * Rajzolt jelek a cikkekbe, a feladatok rajzának IEC-jeleivel (ellenállás: téglalap; feszültségforrás:
+ * kör, a vonal a vezeték mentén; áramforrás: kör, a vonal a vezetékre merőleges). Betűjel helyett, mert az
+ * Ug, Uü, Rt máshol mást jelent. Minden rajz közepe a (0, 0), kb. 46 × 28 egység; előbb a vezetékek,
+ * utána a kitöltött elemek (így a vezeték nem látszik át rajtuk).
+ */
+const icon = (body: string) => `<svg:g fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${body}</svg:g>`;
+/** Ellenállás (téglalap) a megadott bal felső sarokkal és mérettel. */
+const res = (x: number, y: number, w: number, h: number) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1" class="wheel-icon-fill"/>`;
+
+const ICONS: Record<string, string> = {
+  // Egy ellenállás, fölötte az áram nyila: U = R · I.
+  ohm: icon(`<path d="M-22 4H22M-9 -11H9M5 -15L9 -11L5 -7"/>${res(-11, -2, 22, 12)}`),
+  // Két párhuzamos ellenállás: összevonás eredővé.
+  eredo: icon(`<path d="M-22 0H-14M14 0H22M-14 -9V9M14 -9V9M-14 -9H14M-14 9H14"/>${res(-8, -14, 16, 10)}${res(-8, 4, 16, 10)}`),
+  // Feszültségosztó a szokásos kapcsolási rajzzal: soros ellenállás, utána egy a közös sínre, köztük a kimenet.
+  oszto: icon(
+    `<path d="M-19 -8H19M8 -8V14M-19 14H19"/>${res(-13, -13, 13, 10)}${res(3, -3, 10, 12)}<circle cx="8" cy="-8" r="2.6" class="wheel-icon-dot"/>` +
+      `<circle cx="-20" cy="-8" r="2.8" class="wheel-icon-fill"/><circle cx="20" cy="-8" r="2.8" class="wheel-icon-fill"/>`,
+  ),
+  // Csomópont: egy áram befolyik, kettő kifolyik.
+  kirchhoff: icon(
+    `<path d="M-22 0H-4M-11 -4L-6 0L-11 4M0 0L18 -12M0 0L18 12M10 -12H18V-5M10 12H18V5"/><circle cx="0" cy="0" r="4" class="wheel-icon-dot"/>`,
+  ),
+  // Táblázat: minden elem U, I, P értéke.
+  halozat: icon(`<rect x="-19" y="-13" width="38" height="26" rx="2"/><path d="M-19 -4H19M-19 5H19M-7 -13V13M6 -13V13"/>`),
+  // Helyettesítő generátor: forrás, belső ellenállás és a két kapocs.
+  thevenin: icon(
+    `<path d="M-15 -12H17M-15 12H17M-15 -12V12"/><circle cx="-15" cy="0" r="7" class="wheel-icon-fill"/><path d="M-15 -7V7"/>${res(-4, -17, 14, 10)}` +
+      `<circle cx="20" cy="-12" r="3" class="wheel-icon-fill"/><circle cx="20" cy="12" r="3" class="wheel-icon-fill"/>`,
+  ),
+  // Hurok egy feszültség- és egy áramforrással.
+  tobbforras: icon(
+    `<path d="M-14 -14H14M-14 14H14M-14 -14V14M14 -14V-8M14 8V14"/><circle cx="-14" cy="0" r="8" class="wheel-icon-fill"/><path d="M-14 -8V8"/>` +
+      `<circle cx="14" cy="0" r="8" class="wheel-icon-fill"/><path d="M6 0H22"/>`,
+  ),
+  // Delta (háromszög), benne a csillag.
+  'csillag-delta': icon(`<path d="M0 -15L17 13H-17Z"/><path d="M0 4V-15M0 4L-17 13M0 4L17 13"/><circle cx="0" cy="4" r="2.5" class="wheel-icon-dot"/>`),
+  // Nagy, több ablakos hálózat sok ellenállással.
+  zh: icon(`<path d="M-20 -12H20V12H-20ZM-7 -12V12M7 -12V12"/>${res(-17, -15, 7, 6)}${res(-3.5, -15, 7, 6)}${res(10, -15, 7, 6)}${res(-10, -4, 6, 8)}${res(4, -4, 6, 8)}${res(-3.5, 9, 7, 6)}`),
+};
+
+/** Rövid felirat a cikkekbe, és betűjel ott, ahol (még) nincs rajz (a teljes név középen látszik). */
 const SHORT: Record<string, [string, string]> = {
-  ohm: ['Ω', 'Ohm'],
+  ohm: ['Ω', 'Ohm-törvény,\nteljesítmény'],
   eredo: ['Rₑ', 'Eredő'],
-  oszto: ['U÷I', 'Osztók'],
+  oszto: ['U÷I', 'Feszültség- és\náramosztó'],
   kirchhoff: ['ΣI', 'Kirchhoff'],
   halozat: ['U·I·P', 'Analízis'],
   'valodi-gen': ['Rb', 'Generátor'],
-  thevenin: ['A–B', 'Thevenin'],
-  tobbforras: ['2×Ug', 'Több forrás'],
+  thevenin: ['A–B', 'Helyettesítő\ngenerátorok'],
+  tobbforras: ['', 'Több forrás'],
   tanari: ['ZH', 'Tanári'],
   'csillag-delta': ['Y–Δ', 'Csillag-delta'],
   zh: ['ZH', 'Nagy hálózat'],
@@ -86,17 +128,36 @@ export function openTopicWheel(o: WheelOptions): void {
     const path = document.createElementNS(NS, 'path');
     path.setAttribute('d', sector(mid - step / 2 + GAP / 2, mid + step / 2 - GAP / 2));
     const [tx, ty] = polar((R_OUT + R_IN) / 2, mid);
-    const [sym, label] = SHORT[t.id] ?? [t.name.slice(0, 2), t.name.split(' ')[0]!];
-    const s = document.createElementNS(NS, 'text');
-    s.setAttribute('class', 'wheel-sym');
-    s.setAttribute('x', f(tx));
-    s.setAttribute('y', f(ty - 2));
-    s.textContent = sym;
+    const [letters, label] = SHORT[t.id] ?? [t.name.slice(0, 2), t.name.split(' ')[0]!];
+    const sym = ICONS[t.id] ?? letters;
+    // Kétsoros feliratnál a jel és a felirat kicsit feljebb kerül, hogy a cikk közepén maradjon.
+    const up = label.includes('\n') ? -6 : 0;
+    let s: SVGElement;
+    if (sym.startsWith('<svg:')) {
+      // Rajzolt jel: a cikk közepe fölé tolva, a betűjelek helyén.
+      s = document.createElementNS(NS, 'g');
+      s.setAttribute('class', 'wheel-icon');
+      s.setAttribute('transform', `translate(${f(tx)} ${f(ty - 12 + up)})`);
+      s.innerHTML = sym.replaceAll('svg:', '');
+    } else {
+      s = document.createElementNS(NS, 'text');
+      s.setAttribute('class', 'wheel-sym');
+      s.setAttribute('x', f(tx));
+      s.setAttribute('y', f(ty - 2 + up));
+      s.textContent = sym;
+    }
     const l = document.createElementNS(NS, 'text');
     l.setAttribute('class', 'wheel-label');
     l.setAttribute('x', f(tx));
-    l.setAttribute('y', f(ty + 17));
-    l.textContent = label;
+    l.setAttribute('y', f(ty + 17 + up));
+    // A felirat legfeljebb két sor ('\n' választja el).
+    label.split('\n').forEach((line, k) => {
+      const ts = document.createElementNS(NS, 'tspan');
+      ts.setAttribute('x', f(tx));
+      ts.setAttribute('dy', k === 0 ? '0' : '12');
+      ts.textContent = line;
+      l.append(ts);
+    });
     g.append(path, s, l);
     g.addEventListener('pointerenter', () => setHover(i));
     g.addEventListener('click', () => pick(i));

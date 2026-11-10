@@ -36,13 +36,13 @@ export type TeacherType = 'szuperpozicio' | 'thevenin' | 'hurokaram' | 'csomopon
 export const TEACHER_TYPES: TeacherType[] = ['szuperpozicio', 'thevenin', 'hurokaram', 'csomoponti'];
 
 export const TOPIC_NAMES: Record<Topic, string> = {
-  ohm: 'Ohm és teljesítmény',
+  ohm: 'Alapok: Ohm-törvény és teljesítmény',
   eredo: 'Eredő ellenállás',
   kirchhoff: 'Kirchhoff törvényei',
   oszto: 'Feszültség- és áramosztás',
   halozat: 'Teljes hálózatanalízis',
   'valodi-gen': 'Valódi generátor terhelése',
-  thevenin: 'Thevenin és Norton',
+  thevenin: 'Helyettesítő generátorok (Thevenin, Norton)',
   tobbforras: 'Többforrásos hálózatok',
   tanari: 'A tanár úr feladattípusai',
   'csillag-delta': 'Csillag-delta',

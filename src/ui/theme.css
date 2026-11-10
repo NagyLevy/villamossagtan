@@ -924,7 +924,7 @@ h2.daily-title {
   cursor: pointer;
 }
 
-.wheel-seg path {
+.wheel-seg > path {
   fill: rgba(16, 24, 44, 0.86);
   stroke: rgba(255, 255, 255, 0.1);
   stroke-width: 1;
@@ -950,12 +950,12 @@ h2.daily-title {
 }
 
 /* A most beállított témakör: vékony jelölés a külső íven. */
-.wheel-seg.is-current path {
+.wheel-seg.is-current > path {
   stroke: #fff;
   stroke-width: 2;
 }
 
-.wheel-seg.is-hover path {
+.wheel-seg.is-hover > path {
   fill: var(--accent);
   stroke: rgba(255, 255, 255, 0.5);
 }
@@ -1063,4 +1063,30 @@ h2.daily-title {
   .wheel-hint {
     display: none;
   }
+}
+
+/* Rajzolt jel a keréken (pl. két forrás): a betűjelek színét követi. */
+.wheel-icon {
+  stroke: rgba(255, 255, 255, 0.86);
+  pointer-events: none;
+}
+
+.wheel-icon-fill {
+  fill: rgb(16, 24, 44);
+}
+
+.wheel-seg.is-hover .wheel-icon {
+  stroke: var(--accent-ink);
+}
+
+.wheel-seg.is-hover .wheel-icon-fill {
+  fill: var(--accent);
+}
+
+.wheel-icon-dot {
+  fill: rgba(255, 255, 255, 0.86);
+}
+
+.wheel-seg.is-hover .wheel-icon-dot {
+  fill: var(--accent-ink);
 }
