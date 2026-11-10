@@ -825,3 +825,22 @@ h2.daily-title {
     display: none;
   }
 }
+
+/* Próbavizsga: az előírt módszer a feladat fölött. */
+.exam-method {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--label);
+  font-size: 14.5px;
+}
+
+.exam-method strong {
+  color: var(--accent);
+  font-weight: 650;
+}

@@ -117,3 +117,19 @@ export function recommendMethod(p: Problem): { method: MethodId; why: string } {
       : { method: 'hurokaram', why: h < c ? `Hurokárammal ${eq(h)}, csomóponti potenciállal ${eq(c)}: ez a rövidebb.` : `Mindkét módszerrel ${eq(h)}: a tanár úr ilyenkor hurokárammal számol.` };
   return { method: usable[0] ?? 'redukcio', why: '' };
 }
+
+/**
+ * Próbavizsgán előírt módszer: az ajánlott, ha a feladat minden kérdésére választ ad; különben az első
+ * olyan alkalmazható módszer, amelyik mindre (többkérdéses feladatnál nem mindegyik módszer ad meg mindent).
+ */
+export function prescribedMethod(p: Problem): MethodId {
+  const covers = (m: MethodId) => {
+    const r = solveWith(p, m);
+    if (!r.ok) return false;
+    const got = new Set(r.solution.answers.map((a) => a.questionId));
+    return p.questions.every((q) => q.kind === 'table' || got.has(q.id));
+  };
+  const rec = recommendMethod(p).method;
+  if (covers(rec)) return rec;
+  return applicableMethods(p).find(covers) ?? rec;
+}
