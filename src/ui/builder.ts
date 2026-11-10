@@ -345,10 +345,40 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   const results = h('div', { class: 'builder-results' });
   const solution = h('div', { class: 'builder-solution' });
 
+  // Visszavonás: minden változtatás előtti állapot egy veremben (a recompute veszi észre, hogy változott a rajz).
+  const undoStack: string[] = [];
+  const redoStack: string[] = [];
+  let lastState = JSON.stringify(board.parts);
+  let restoring = false;
+  const restore = (from: string[], to: string[]) => {
+    const state = from.pop();
+    if (state === undefined) return;
+    to.push(lastState);
+    board.parts = JSON.parse(state) as Board['parts'];
+    selected = null;
+    restoring = true;
+    recompute();
+    restoring = false;
+    renderEditor();
+  };
+  const undo = () => restore(undoStack, redoStack);
+  const redo = () => restore(redoStack, undoStack);
+  let syncHistory = () => {};
+
   const recompute = () => {
+    const now = JSON.stringify(board.parts);
+    if (now !== lastState) {
+      if (!restoring) {
+        undoStack.push(lastState);
+        if (undoStack.length > 200) undoStack.shift();
+        redoStack.length = 0;
+      }
+      lastState = now;
+    }
     saveBoard(board);
     const r = buildProblem(board);
     dangling = new Set(r.dangling);
+    syncHistory();
     names = r.ok ? r.names : new Map();
     draw();
     if (!r.ok) {
@@ -634,8 +664,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       pinch = { dist: st.dist, zoom: view.zoom, wx: view.x + (st.mx - r.left) / view.zoom, wy: view.y + (st.my - r.top) / view.zoom };
       return;
     }
-    // Mozgatás eszközzel, vagy bármikor a középső / jobb egérgombbal húzva.
-    if (tool === 'pan' || e.button === 1 || e.button === 2) {
+    // Mozgatás eszközzel, vagy bármikor Shift + húzással, illetve a középső / jobb egérgombbal húzva.
+    if (tool === 'pan' || e.button === 1 || e.button === 2 || e.shiftKey) {
       e.preventDefault();
       svg.setPointerCapture(e.pointerId);
       panning = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
@@ -861,6 +891,28 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       renderEditor();
     }, 'quiet'),
   );
+  // Visszavonás és a kósza (semmihez nem kötött, áramkörön kívüli) elemek törlése.
+  const undoBtn = button('Visszavonás', () => undo(), 'quiet');
+  undoBtn.title = 'Az utolsó változtatás visszavonása (Ctrl + Z)';
+  const strayBtn = button('Kósza elemek törlése', () => {
+    for (const k of dangling) delete board.parts[k];
+    selected = null;
+    recompute();
+    renderEditor();
+  }, 'quiet');
+  strayBtn.title = 'Minden olyan elem és vezeték törlése, amely nincs zárt körbe kötve (a rajzon szaggatott).';
+  actions.prepend(undoBtn);
+  actions.insertBefore(strayBtn, actions.lastElementChild);
+  syncHistory = () => {
+    undoBtn.disabled = undoStack.length === 0;
+    strayBtn.hidden = dangling.size === 0;
+    strayBtn.textContent = `Kósza elemek törlése (${dangling.size})`;
+  };
+  syncHistory();
+  const guide = h('p', {
+    class: 'builder-guide',
+    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése',
+  });
 
   const root = h(
     'div',
@@ -871,7 +923,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       h('h1', { class: 'problem-title', text: 'Építs áramkört' }),
       h('p', { class: 'gate-info', text: 'Húzd az elemeket a rácsra, kösd össze őket vezetékkel, és állítsd be az értékeket. A program azonnal kiszámolja, és minden alkalmazható módszerrel megmutatja a levezetést.' }),
     ),
-    h('section', { class: 'card builder-card', attrs: { 'aria-label': 'Áramkör-szerkesztő' } }, h('div', { class: 'builder-bar' }, palette, actions), canvasWrap, editor),
+    h('section', { class: 'card builder-card', attrs: { 'aria-label': 'Áramkör-szerkesztő' } }, h('div', { class: 'builder-bar' }, palette, actions), canvasWrap, editor, guide),
     status,
     h('section', { class: 'card builder-results-card' }, results),
     solution,
@@ -884,6 +936,13 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       return;
     }
     if ((e.target as HTMLElement).closest('input, select, textarea, dialog')) return;
+    // Visszavonás / újra: Ctrl + Z, Ctrl + Shift + Z vagy Ctrl + Y (Macen ⌘).
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
+      e.preventDefault();
+      if (e.shiftKey || e.key === 'y') redo();
+      else undo();
+      return;
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
       e.preventDefault();
       remove(selected);
