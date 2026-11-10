@@ -34,7 +34,7 @@ const SHORT: Record<string, [string, string]> = {
   halozat: ['U·I·P', 'Analízis'],
   'valodi-gen': ['Rb', 'Generátor'],
   thevenin: ['A–B', 'Thevenin'],
-  tobbforras: ['2×Ug', 'Több forrás'],
+  tobbforras: ['Ug+Ig', 'Több forrás'],
   tanari: ['ZH', 'Tanári'],
   'csillag-delta': ['Y–Δ', 'Csillag-delta'],
   zh: ['ZH', 'Nagy hálózat'],
