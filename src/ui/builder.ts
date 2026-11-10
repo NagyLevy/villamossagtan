@@ -2,7 +2,7 @@
 // között húzva. Minden változás után újraszámol: táblázat minden elem U, I, P értékével, alatta a megoldás
 // nézete, ahol a módszerek egyenként végignézhetők és össze vannak vetve. A modell: src/builder/model.ts.
 
-import { buildProblem, crossingKey, DEFAULT_VALUE, edgeEnds, edgeKey, exampleBoard, nextNumber, numberParts, partName, type Board, type EdgeKey, type Part, type PartKind } from '../builder/model';
+import { buildProblem, crossingKey, DEFAULT_VALUE, edgeEnds, edgeKey, exampleBoard, nextNumber, numberParts, partName, renumber, type Board, type EdgeKey, type Part, type PartKind } from '../builder/model';
 import { tableTargets } from '../methods/check';
 import { dcTask } from '../tasks';
 import { formatQuantity, type Unit } from '../units';
@@ -508,7 +508,6 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       if (v === null || v === part.value) return;
       part.value = v;
       recompute();
-      // Az ellenállás neve az értékéből jön (R8): a szerkesztő fejléce is frissül.
       renderEditor();
     };
     input.addEventListener('change', apply);
@@ -525,7 +524,32 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
             part.dir = part.dir === 1 ? -1 : 1;
             recompute();
           }, 'quiet');
-    editor.replaceChildren(title, h('label', { class: 'builder-value' }, input, h('span', { text: UNIT_OF[part.kind] })), ...(flip ? [flip] : []), del);
+    // Sorszám kézzel: a név (R3, Ug1 …) száma átírható; ha már foglalt, a két elem számot cserél.
+    const prefix = part.kind === 'R' ? 'R' : part.kind === 'V' ? 'Ug' : 'Ig';
+    const num = h('input', { class: 'builder-input builder-num', attrs: { type: 'text', inputmode: 'numeric', value: String(part.n ?? ''), 'aria-label': 'Sorszám' } });
+    const applyNum = () => {
+      const n = /^\s*\d+\s*$/.test(num.value) ? Number(num.value) : NaN;
+      const same = n === part.n;
+      const ok = same || renumber(board, key, n);
+      num.classList.toggle('is-bad', !ok);
+      if (!ok || same) return;
+      recompute();
+      renderEditor();
+    };
+    num.addEventListener('change', applyNum);
+    num.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        applyNum();
+        num.blur();
+      }
+    });
+    editor.replaceChildren(
+      title,
+      h('label', { class: 'builder-value' }, h('span', { class: 'builder-field-name', text: 'Sorszám' }), h('span', { text: prefix }), num),
+      h('label', { class: 'builder-value' }, h('span', { class: 'builder-field-name', text: 'Érték' }), input, h('span', { text: UNIT_OF[part.kind] })),
+      ...(flip ? [flip] : []),
+      del,
+    );
   };
 
   const select = (key: EdgeKey | null) => {
@@ -917,7 +941,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   syncHistory();
   const guide = h('p', {
     class: 'builder-guide',
-    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése',
+    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Ctrl + Shift + Z: újra · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése · elemre kattintva alul átírható a sorszáma (R1, R2 …) és az értéke',
   });
 
   const root = h(

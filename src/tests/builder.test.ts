@@ -145,3 +145,26 @@ describe('áramkör-építő: sorszámozás a letevés sorrendjében', () => {
     checkAll(b, ['redukcio']);
   });
 });
+
+describe('áramkör-építő: kézi átszámozás', () => {
+  it('szabad számra átír, foglalt számnál a két elem számot cserél; a források külön számozódnak', async () => {
+    const { partName, renumber } = await import('../builder/model');
+    const b = board({ 'v:0:0': { ...V(12), n: 1 }, 'h:0:0': { ...R(2), n: 1 }, 'v:1:0': { ...R(6), n: 2 }, 'h:0:1': W });
+    expect(renumber(b, 'h:0:0', 5)).toBe(true);
+    expect(partName(b.parts['h:0:0']!)).toBe('R5');
+    // Csere: R5 ↔ R2.
+    expect(renumber(b, 'v:1:0', 5)).toBe(true);
+    expect([partName(b.parts['h:0:0']!), partName(b.parts['v:1:0']!)]).toEqual(['R2', 'R5']);
+    // A forrás száma független az ellenállásokétól.
+    expect(renumber(b, 'v:0:0', 2)).toBe(true);
+    expect(partName(b.parts['v:0:0']!)).toBe('Ug2');
+    // Érvénytelen szám és vezeték: nem változik semmi.
+    expect(renumber(b, 'h:0:0', 0)).toBe(false);
+    expect(renumber(b, 'h:0:0', 1.5)).toBe(false);
+    expect(renumber(b, 'h:0:1', 3)).toBe(false);
+    const r = buildProblem(b);
+    if (!r.ok) throw new Error(r.reason);
+    expect([...r.names.values()].sort()).toEqual(['R2', 'R5', 'Ug2']);
+    checkAll(b, ['redukcio']);
+  });
+});

@@ -1551,3 +1551,16 @@ h2.daily-title {
     display: none;
   }
 }
+
+/* Építő: sorszám és érték mezők az alsó sávban. */
+.builder-field-name {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  margin-right: 2px;
+}
+
+.builder-num {
+  width: 5ch;
+  text-align: center;
+}

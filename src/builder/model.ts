@@ -38,6 +38,19 @@ export function nextNumber(board: Board, kind: PartKind): number {
   return n;
 }
 
+/**
+ * Kézi átszámozás: az elem az `n` sorszámot kapja. Ha a fajtájából már van ilyen sorszámú, a kettő helyet cserél
+ * (a másik megkapja ennek a régi számát), így a nevek egyediek maradnak. Hamis, ha a szám nem érvényes.
+ */
+export function renumber(board: Board, key: EdgeKey, n: number): boolean {
+  const part = board.parts[key];
+  if (!part || part.kind === 'W' || !Number.isInteger(n) || n < 1 || n > 999) return false;
+  const other = Object.values(board.parts).find((p) => p !== part && p.kind === part.kind && p.n === n);
+  if (other) other.n = part.n;
+  part.n = n;
+  return true;
+}
+
 /** Sorszám nélküli elemek (régi mentés) pótlása; a meglévő sorszámok nem változnak. */
 export function numberParts(board: Board): void {
   for (const part of Object.values(board.parts)) if (part.kind !== 'W' && !part.n) part.n = nextNumber(board, part.kind);
