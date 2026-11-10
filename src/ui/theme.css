@@ -1398,3 +1398,83 @@ h2.daily-title {
 .builder-inline.is-bad {
   border-color: var(--danger);
 }
+
+/* Építő: színkód. Minden adattal bíró elem saját színt kap (a rajzon, a feliratán és a táblázatban). */
+:root {
+  --bc-0: #1f5bff;
+  --bc-1: #c2410c;
+  --bc-2: #0b8043;
+  --bc-3: #a13fd6;
+  --bc-4: #0e7490;
+  --bc-5: #be185d;
+  --bc-6: #8a6100;
+  --bc-7: #4d7c0f;
+  --bc-8: #5b4bdb;
+  --bc-9: #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bc-0: #7aa8ff;
+    --bc-1: #ff9a62;
+    --bc-2: #4ade80;
+    --bc-3: #d59bff;
+    --bc-4: #4fd1e6;
+    --bc-5: #ff7ab8;
+    --bc-6: #f2c14e;
+    --bc-7: #b5e05a;
+    --bc-8: #a99bff;
+    --bc-9: #ff7b7b;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bc-0: #7aa8ff;
+  --bc-1: #ff9a62;
+  --bc-2: #4ade80;
+  --bc-3: #d59bff;
+  --bc-4: #4fd1e6;
+  --bc-5: #ff7ab8;
+  --bc-6: #f2c14e;
+  --bc-7: #b5e05a;
+  --bc-8: #a99bff;
+  --bc-9: #ff7b7b;
+}
+
+.bp {
+  color: var(--c, var(--ink));
+}
+
+.bp-label,
+.bp.is-selected .bp-label {
+  fill: var(--c, var(--label));
+}
+
+/* Kijelölés: a szín marad, az elem vastagabb, mögötte halvány sáv. */
+.bp.is-selected {
+  color: var(--c, var(--accent));
+}
+
+.bp.is-selected .bp-hit {
+  stroke: color-mix(in srgb, currentColor 16%, transparent);
+  stroke-linecap: round;
+}
+
+.bp.is-selected .bp-body,
+.bp.is-selected .bp-wire {
+  stroke-width: 3.2;
+}
+
+.bp-label:hover {
+  fill: var(--c, var(--accent));
+  text-decoration: underline;
+}
+
+.builder-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--c, var(--ink-2));
+}

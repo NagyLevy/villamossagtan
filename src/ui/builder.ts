@@ -74,6 +74,16 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   let hoverEdge: EdgeKey | null = null;
   let names = new Map<EdgeKey, string>();
   let dangling = new Set<EdgeKey>();
+  /** Színkód: minden adattal bíró elem (ellenállás, forrás) saját színt kap; a felirata és a táblázat sora is ilyen. */
+  const COLORS = 10;
+  let colorOf = new Map<EdgeKey, number>();
+  const assignColors = () => {
+    const keys = Object.entries(board.parts)
+      .filter(([, p]) => p.kind !== 'W')
+      .map(([k]) => k)
+      .sort((a, b) => (names.get(a) ?? a).localeCompare(names.get(b) ?? b, 'hu', { numeric: true }));
+    colorOf = new Map(keys.map((k, i) => [k, i % COLORS]));
+  };
 
   const W = board.cols * CELL + PAD * 2;
   const H = board.rows * CELL + PAD * 2;
@@ -143,6 +153,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     const cls = ['bp', `bp-${part.kind}`, key === selected ? 'is-selected' : '', dangling.has(key) ? 'is-dangling' : ''].filter(Boolean).join(' ');
     const g = svgEl('g', { class: cls });
     g.dataset.key = key;
+    if (colorOf.has(key)) g.style.setProperty('--c', `var(--bc-${colorOf.get(key)})`);
     // Széles, láthatatlan sáv: könnyebb eltalálni.
     g.append(svgEl('line', { x1, y1, x2, y2, class: 'bp-hit' }));
     g.append(svgEl('line', { x1, y1, x2, y2, class: 'bp-wire' }));
@@ -248,6 +259,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       const [x2, y2] = px(b);
       kids.push(svgEl('line', { x1, y1, x2, y2, class: 'bg-hover' }));
     }
+    assignColors();
     const places = layoutLabels();
     // Előbb a vezetékek, utána az elemek: a feliratok így mindig felül vannak.
     const sorted = Object.entries(board.parts).sort(([, p], [, q]) => Number(p.kind !== 'W') - Number(q.kind !== 'W'));
@@ -295,7 +307,17 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
           'table',
           { class: 'value-table' },
           h('thead', {}, h('tr', {}, h('th', { text: 'Elem' }), h('th', { text: 'U' }), h('th', { text: 'I' }), h('th', { text: 'P' }))),
-          h('tbody', {}, ...tableTargets(p).map((t) => h('tr', {}, h('td', { text: t.label }), cell(t.U, 'V'), cell(t.I, 'A'), cell(t.P, 'W')))),
+          h(
+            'tbody',
+            {},
+            ...tableTargets(p).map((t) => {
+              // Ugyanaz a szín, mint a rajzon.
+              const key = [...names].find(([, id]) => id === t.element)?.[0];
+              const dot = h('i', { class: 'builder-dot' });
+              if (key && colorOf.has(key)) dot.style.setProperty('--c', `var(--bc-${colorOf.get(key)})`);
+              return h('tr', {}, h('td', {}, dot, t.label), cell(t.U, 'V'), cell(t.I, 'A'), cell(t.P, 'W'));
+            }),
+          ),
         ),
       ),
       h('p', { class: 'builder-note', text: 'Az áram és a feszültség pozitív iránya balról jobbra, illetve fentről lefelé mutat; a negatív érték ellentétes irányt jelent. A forrás teljesítménye negatív, ha teljesítményt ad le.' }),
