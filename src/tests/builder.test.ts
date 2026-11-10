@@ -104,3 +104,24 @@ describe('áramkör-építő: átlós (keresztbe tett) elemek', () => {
     expect(r).toMatchObject({ ok: false, reason: expect.stringContaining('keresztezi') });
   });
 });
+
+describe('áramkör-építő: végtelen tábla', () => {
+  it('negatív és nagy koordinátákon ugyanaz az eredmény', () => {
+    const shift = (b: Board, dx: number, dy: number): Board => ({
+      ...b,
+      parts: Object.fromEntries(
+        Object.entries(b.parts).map(([k, v]) => {
+          const [o, x, y] = k.split(':');
+          return [`${o}:${Number(x) + dx}:${Number(y) + dy}`, v];
+        }),
+      ),
+    });
+    const base = buildProblem(exampleBoard());
+    for (const [dx, dy] of [[-5, -3], [40, 25], [-1, 0]] as const) {
+      const moved = buildProblem(shift(exampleBoard(), dx, dy));
+      expect(moved.ok).toBe(true);
+      if (base.ok && moved.ok) expect(moved.problem.questions.map((q) => q.answer)).toEqual(base.problem.questions.map((q) => q.answer));
+    }
+    checkAll(shift(exampleBoard(), -7, -2), ['redukcio', 'kirchhoff']);
+  });
+});

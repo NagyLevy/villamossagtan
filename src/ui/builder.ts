@@ -11,18 +11,18 @@ import { h } from './dom';
 import type { TaskViewer } from './viewer';
 
 const CELL = 124;
-const PAD = 84;
 const KEY = 'villamossagtan.epito.v1';
 const NS = 'http://www.w3.org/2000/svg';
 
-type Tool = 'wire' | 'R' | 'V' | 'I' | 'erase';
+type Tool = 'wire' | 'R' | 'V' | 'I' | 'erase' | 'pan';
 
-const TOOL_NAMES: Record<Tool, string> = { wire: 'Vezeték', R: 'Ellenállás', V: 'Feszültségforrás', I: 'Áramforrás', erase: 'Radír' };
+const TOOL_NAMES: Record<Tool, string> = { wire: 'Vezeték', R: 'Ellenállás', V: 'Feszültségforrás', I: 'Áramforrás', erase: 'Radír', pan: 'Mozgatás' };
 const UNIT_OF: Record<PartKind, Unit> = { W: '', R: 'Ω', V: 'V', I: 'A' };
 const KIND_NAME: Record<PartKind, string> = { W: 'vezeték', R: 'ellenállás', V: 'feszültségforrás', I: 'áramforrás' };
 
 /** Kis rajz az eszköztár gombjaira (ugyanazok a jelek, mint a rácson). */
 const TOOL_ICON: Record<Tool, string> = {
+  pan: '<path d="M14 3V21M5 12H23M14 3L11 6M14 3L17 6M14 21L11 18M14 21L17 18M5 12L8 9M5 12L8 15M23 12L20 9M23 12L20 15"/>',
   wire: '<path d="M3 12H25"/><circle cx="3" cy="12" r="2.2" fill="currentColor"/><circle cx="25" cy="12" r="2.2" fill="currentColor"/>',
   R: '<path d="M1 12H6M22 12H27"/><rect x="6" y="7" width="16" height="10" rx="1"/>',
   V: '<path d="M14 2V22"/><circle cx="14" cy="12" r="7"/>',
@@ -88,10 +88,17 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   }
   let colorOf = new Map<EdgeKey, number>();
 
-  const W = board.cols * CELL + PAD * 2;
-  const H = board.rows * CELL + PAD * 2;
-  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'builder-svg' });
-  const px = (p: [number, number]): [number, number] => [PAD + p[0] * CELL, PAD + p[1] * CELL];
+  // A tábla végtelen: a nézet (bal felső sarok világ-koordinátában és a nagyítás) szabadon mozgatható, mint egy
+  // rajztáblán. A rácspont (x, y) helye a világban (x · CELL, y · CELL).
+  const view = { x: -CELL, y: -CELL, zoom: 1 };
+  const ZOOM_MIN = 0.3;
+  const ZOOM_MAX = 2.5;
+  const svg = svgEl('svg', { class: 'builder-svg' });
+  const px = (p: [number, number]): [number, number] => [p[0] * CELL, p[1] * CELL];
+  const viewSize = (): [number, number] => {
+    const r = svg.getBoundingClientRect();
+    return [r.width || 960, r.height || 560];
+  };
 
   // ───────── Rajz ─────────
 
@@ -109,14 +116,20 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   };
   type Geo = ReturnType<typeof geometry>;
 
-  /** A felirat helye: az elem közepétől `dir` irányban (fok, a képernyőn), közel vagy távolabb. */
+  /**
+   * A felirat helye: egy kiindulóponttól `dir` irányban (fok, a képernyőn). Ellenállásnál a kiindulópont az elem
+   * közepe (közel vagy távolabb); forrásnál a nyíl közepe, mert az érték mindig a nyíl mellett áll.
+   */
   interface Spot {
     dir: number;
-    /** Távolság: 0 = közvetlenül az elem mellett, 1 = kicsit távolabb, 2 = a forrás nyilán is túl. */
+    /** Távolság: 0 = közvetlenül mellette, 1–2 = távolabb (csak ellenállásnál). */
     far: 0 | 1 | 2;
+    /** Forrásnál: a nyíl közepe és a felirat távolsága tőle. */
+    from?: { x: number; y: number; near: number };
   }
-  /** A lehetséges helyek: körben 45°-onként, három távolságban. */
+  /** Ellenállás lehetséges felirathelyei: körben 45°-onként, három távolságban. */
   const SPOTS: Spot[] = [0, 45, 90, 135, 180, 225, 270, 315].flatMap((dir) => ([0, 1, 2] as const).map((far) => ({ dir, far })));
+  const norm = (deg: number) => ((Math.round(deg / 45) * 45) % 360 + 360) % 360;
 
   /** A felirat sorai: fölötte / alatta egy sorban („R4 = 4 Ω”), oldalt két sorban (név, alatta az érték). */
   const labelLines = (key: EdgeKey, part: Part, spot: Spot): string[] => {
@@ -133,24 +146,43 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     const uy = Math.round(Math.sin(rad) * 100) / 100;
     const w = Math.max(...lines.map((t) => t.length)) * 8.4 + 4;
     const hgt = lines.length * 16 + 2;
-    const near = (part.kind === 'R' ? 13 : 19) + 5;
+    const near = spot.from?.near ?? (part.kind === 'R' ? 13 : 19) + 5;
     const dist = (near + [0, 20, 38][spot.far]!) * (ux !== 0 && uy !== 0 ? 0.92 : 1);
-    const x = g.cx + Math.sign(ux) * dist;
-    const y = g.cy + Math.sign(uy) * dist;
+    const x = (spot.from?.x ?? g.cx) + Math.sign(ux) * dist;
+    const y = (spot.from?.y ?? g.cy) + Math.sign(uy) * dist;
     const anchor = ux > 0.3 ? 'start' : ux < -0.3 ? 'end' : 'middle';
     const top = uy > 0.3 ? y : uy < -0.3 ? y - hgt : y - hgt / 2;
     const left = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2;
     return { x, top, anchor, box: { x1: left, y1: top, x2: left + w, y2: top + hgt } as Box };
   };
 
-  /** A forrás nyilának doboza az elem egyik oldalán (side = ±1, az elem saját tengelyére merőlegesen). */
-  const arrowBox = (g: Geo, side: 1 | -1): Box => {
+  /** A forrás nyilának közepe az elem egyik oldalán (side = ±1, az elem tengelyére merőlegesen 26 egységre). */
+  const arrowAt = (g: Geo, side: 1 | -1) => {
     const rad = (g.angle * Math.PI) / 180;
     // A rajzban a nyíl a helyi (0, 26·side) pontban fut: ez a képernyőn (−sin, cos) · 26 · side.
-    return around(g.cx - Math.sin(rad) * 26 * side, g.cy + Math.cos(rad) * 26 * side, 13);
+    return { x: g.cx - Math.sin(rad) * 26 * side, y: g.cy + Math.cos(rad) * 26 * side };
+  };
+  const arrowBox = (g: Geo, side: 1 | -1): Box => {
+    const c = arrowAt(g, side);
+    return around(c.x, c.y, 13);
+  };
+  /** Forrás felirathelyei a nyíl mellett: a nyílon túl (kifelé), vagy a nyíl két vége mellett. */
+  const sourceSpots = (g: Geo, side: 1 | -1): Spot[] => {
+    const c = arrowAt(g, side);
+    const out = norm((Math.atan2(c.y - g.cy, c.x - g.cx) * 180) / Math.PI);
+    return [
+      { dir: out, far: 0, from: { ...c, near: 9 } },
+      { dir: norm(g.angle), far: 0, from: { ...c, near: 18 } },
+      { dir: norm(g.angle + 180), far: 0, from: { ...c, near: 18 } },
+    ];
   };
 
-  const partSvg = (key: EdgeKey, part: Part, place: { spot: Spot; arrow: 1 | -1; moved: boolean }): SVGGElement => {
+  interface Placement {
+    spot: Spot;
+    arrow: 1 | -1;
+  }
+
+  const partSvg = (key: EdgeKey, part: Part, place: Placement): SVGGElement => {
     const geo = geometry(key);
     const { x1, y1, x2, y2, cx, cy, angle } = geo;
     const cls = ['bp', `bp-${part.kind}`, key === selected ? 'is-selected' : '', dangling.has(key) ? 'is-dangling' : ''].filter(Boolean).join(' ');
@@ -192,10 +224,11 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
 
   /**
    * Feliratok és forrásnyilak helye. A rajz minden „tintája” (vezetékek, elemek teste) apró dobozokra bontva
-   * akadály; minden felirat a 16 lehetséges hely közül oda kerül, ahol a legkevesebbet takar (tinta, a már
-   * elhelyezett feliratok és nyilak, a rajz széle). Így sűrű, átlós elemekkel teli rajzon sem csúsznak egymásra.
+   * akadály; minden felirat a lehetséges helyei közül oda kerül, ahol a legkevesebbet takar (tinta, a már
+   * elhelyezett feliratok és nyilak). A forrás értéke mindig a nyíl mellett áll: a nyíl oldalát és a felirat
+   * helyét (a nyílon túl vagy a nyíl valamelyik végénél) együtt választjuk.
    */
-  const layoutLabels = (): Map<EdgeKey, { spot: Spot; arrow: 1 | -1; moved: boolean }> => {
+  const layoutLabels = (): Map<EdgeKey, Placement> => {
     const entries = Object.entries(board.parts);
     const geos = new Map(entries.map(([k]) => [k, geometry(k)]));
     const ink: Box[] = [];
@@ -213,51 +246,51 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       let c = 0;
       for (const o of ink) c += overlap(pad, o) * 2;
       for (const o of taken) c += overlap(pad, o) * 3;
-      if (b.x1 < 2 || b.y1 < 2 || b.x2 > W - 2 || b.y2 > H - 2) c += 1e6;
       return c;
     };
-    const out = new Map<EdgeKey, { spot: Spot; arrow: 1 | -1; moved: boolean }>();
-    /** A legjobb felirathely az adott (már foglalt) helyek mellett. */
-    const bestSpot = (key: EdgeKey, part: Part, g: Geo) => {
-      // A szokásos hely az elem „fölött” (vízszintesnél fölötte, függőlegesnél jobbra); a többi csak ha ott takarna.
-      const home = g.angle === 0 ? 270 : g.angle === 90 ? 0 : g.angle === 45 ? 315 : 225;
-      let best: Spot = SPOTS[0]!;
+    /** A legkevesebbet takaró hely a jelöltek közül (az `extra` a hely saját, előnyben részesítési pontja). */
+    const bestOf = (key: EdgeKey, part: Part, g: Geo, cands: { spot: Spot; extra: number }[]) => {
+      let best = cands[0]!.spot;
       let bestCost = Infinity;
-      for (const spot of SPOTS) {
-        const turn = Math.min(Math.abs(spot.dir - home), 360 - Math.abs(spot.dir - home));
-        // A felirat maradjon az elem közelében: előbb a két oldala, aztán a sarkai (ugyanolyan közel), és csak
-        // végső esetben távolabb. A távolság többet számít, mint az, hogy melyik oldalra kerül.
-        const bias = (turn === 0 ? 0 : turn === 180 ? 0.5 : 1 + turn / 90) + spot.far * 25;
-        const c = costOf(labelBox(g, part, labelLines(key, part, spot), spot).box) + bias;
+      for (const { spot, extra } of cands) {
+        const c = costOf(labelBox(g, part, labelLines(key, part, spot), spot).box) + extra;
         if (c < bestCost) {
           bestCost = c;
           best = spot;
         }
       }
-      return { spot: best, cost: bestCost, moved: best.dir !== home || best.far > 0 };
+      return { spot: best, cost: bestCost };
     };
-    // Előbb a források: a nyíl két oldala közül az nyer, amelyik mellett a felirat is közel marad a forráshoz
-    // (a nyíl és a felirat helyét együtt választjuk). Utána az ellenállások feliratai.
+    const out = new Map<EdgeKey, Placement>();
+    // Előbb a források (nyíl + érték együtt), utána az ellenállások feliratai.
     const order = [...entries.filter(([, p]) => p.kind === 'V' || p.kind === 'I'), ...entries.filter(([, p]) => p.kind === 'R')];
     for (const [key, part] of order) {
       const g = geos.get(key)!;
       if (part.kind === 'R') {
-        const b = bestSpot(key, part, g);
-        out.set(key, { spot: b.spot, arrow: 1, moved: b.moved });
+        // A szokásos hely az elem „fölött” (vízszintesnél fölötte, függőlegesnél jobbra). Előbb a két oldala, aztán
+        // a sarkai (ugyanolyan közel), és csak végső esetben távolabb.
+        const home = g.angle === 0 ? 270 : g.angle === 90 ? 0 : g.angle === 45 ? 315 : 225;
+        const cands = SPOTS.map((spot) => {
+          const turn = Math.min(Math.abs(spot.dir - home), 360 - Math.abs(spot.dir - home));
+          return { spot, extra: (turn === 0 ? 0 : turn === 180 ? 0.5 : 1 + turn / 90) + spot.far * 25 };
+        });
+        const b = bestOf(key, part, g, cands);
+        out.set(key, { spot: b.spot, arrow: 1 });
         taken.push(labelBox(g, part, labelLines(key, part, b.spot), b.spot).box);
         continue;
       }
-      let pick: { arrow: 1 | -1; spot: Spot; moved: boolean } | null = null;
+      let pick: Placement | null = null;
       let pickCost = Infinity;
       for (const arrow of [1, -1] as const) {
         const ab = arrowBox(g, arrow);
         const arrowCost = costOf(ab);
         taken.push(ab);
-        const b = bestSpot(key, part, g);
+        // A nyílon túl (kifelé) a legszebb; a nyíl végei mellett csak ha ott takarna.
+        const b = bestOf(key, part, g, sourceSpots(g, arrow).map((spot, i) => ({ spot, extra: i === 0 ? 0 : 1 })));
         taken.pop();
         if (arrowCost + b.cost < pickCost) {
           pickCost = arrowCost + b.cost;
-          pick = { arrow, spot: b.spot, moved: b.moved };
+          pick = { arrow, spot: b.spot };
         }
       }
       out.set(key, pick!);
@@ -268,11 +301,15 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
 
   const draw = () => {
     const kids: SVGElement[] = [];
-    // Rácspontok.
-    for (let y = 0; y <= board.rows; y++)
-      for (let x = 0; x <= board.cols; x++) {
+    // A nézet: a látható világrész. A rácspontok csak a látható tartományra készülnek.
+    const [vw, vh] = viewSize();
+    const ww = vw / view.zoom;
+    const wh = vh / view.zoom;
+    svg.setAttribute('viewBox', `${view.x} ${view.y} ${ww} ${wh}`);
+    for (let y = Math.floor(view.y / CELL); y <= Math.ceil((view.y + wh) / CELL); y++)
+      for (let x = Math.floor(view.x / CELL); x <= Math.ceil((view.x + ww) / CELL); x++) {
         const [cx, cy] = px([x, y]);
-        kids.push(svgEl('circle', { cx, cy, r: 2.5, class: 'bg-dot' }));
+        kids.push(svgEl('circle', { cx, cy, r: 2.5 / Math.min(1, view.zoom), class: 'bg-dot' }));
       }
     if (hoverEdge && !board.parts[hoverEdge]) {
       const [a, b] = edgeEnds(hoverEdge);
@@ -290,7 +327,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     colorOf = new Map(coded.map((k, i) => [k, i % COLORS]));
     // Előbb a vezetékek, utána az elemek: a feliratok így mindig felül vannak.
     const sorted = Object.entries(board.parts).sort(([, p], [, q]) => Number(p.kind !== 'W') - Number(q.kind !== 'W'));
-    for (const [key, part] of sorted) kids.push(partSvg(key, part, places.get(key) ?? { spot: SPOTS[0]!, arrow: 1, moved: false }));
+    for (const [key, part] of sorted) kids.push(partSvg(key, part, places.get(key) ?? { spot: SPOTS[0]!, arrow: 1 }));
     // Csomópont-pötty, ahol legalább három szakasz találkozik.
     const degree = new Map<string, number>();
     for (const key of Object.keys(board.parts)) for (const p of edgeEnds(key)) degree.set(p.join(','), (degree.get(p.join(',')) ?? 0) + 1);
@@ -360,7 +397,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
 
   // ───────── Szerkesztés ─────────
 
-  const canvasWrap = h('div', { class: 'builder-canvas' }, svg as unknown as HTMLElement);
+  const zoomCtl = h('div', { class: 'builder-zoom', attrs: { role: 'group', 'aria-label': 'Nézet' } });
+  const canvasWrap = h('div', { class: 'builder-canvas' }, svg as unknown as HTMLElement, zoomCtl);
 
   /** Érték átírása helyben: beviteli mező a felirat helyén (Enter vagy kikattintás ment, Esc elvet). */
   const editInline = (key: EdgeKey, labelEl: SVGTextElement) => {
@@ -417,6 +455,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
               ? 'Vezeték: kattints egy rácsvonalra vagy egy négyzet átlójára (a kék sáv mutatja, hová kerül), vagy húzd pontról pontra. Az értéket a számra kattintva írhatod át.'
               : tool === 'erase'
                 ? 'Radír: kattints arra az elemre vagy vezetékre, amit törölni szeretnél.'
+                : tool === 'pan'
+                  ? 'Mozgatás: húzd a táblát bármerre. Görgővel (vagy két ujjal) nagyíthatsz és kicsinyíthetsz; a tábla végtelen.'
                 : `${TOOL_NAMES[tool]}: kattints egy rácsvonalra vagy egy négyzet átlójára (keresztbe), vagy húzd oda a gombot az eszköztárról.`,
         }),
       );
@@ -489,11 +529,9 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   };
 
   // Egér / ujj helye rácskoordinátában.
-  const gridPos = (e: PointerEvent): [number, number] => {
+  const gridPos = (e: { clientX: number; clientY: number }): [number, number] => {
     const r = svg.getBoundingClientRect();
-    const sx = ((e.clientX - r.left) / r.width) * W;
-    const sy = ((e.clientY - r.top) / r.height) * H;
-    return [(sx - PAD) / CELL, (sy - PAD) / CELL];
+    return [(view.x + (e.clientX - r.left) / view.zoom) / CELL, (view.y + (e.clientY - r.top) / view.zoom) / CELL];
   };
   const inside = (e: PointerEvent) => {
     const r = svg.getBoundingClientRect();
@@ -505,18 +543,15 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     const hx = Math.floor(gx);
     const vx = Math.round(gx);
     const vy = Math.floor(gy);
-    const hOk = hx >= 0 && hx < board.cols && hy >= 0 && hy <= board.rows;
-    const vOk = vy >= 0 && vy < board.rows && vx >= 0 && vx <= board.cols;
-    const hd = hOk ? Math.abs(gy - hy) : Infinity;
-    const vd = vOk ? Math.abs(gx - vx) : Infinity;
+    const hd = Math.abs(gy - hy);
+    const vd = Math.abs(gx - vx);
     // A négyzet két átlója: a négyzet belsejében, az átló vonalához közel (a sarkoknál a rácsvonalak nyernek).
     const cx = Math.floor(gx);
     const cy = Math.floor(gy);
     const fx = gx - cx;
     const fy = gy - cy;
-    const cellOk = cx >= 0 && cx < board.cols && cy >= 0 && cy < board.rows;
-    const dd = cellOk ? Math.abs(fx - fy) / Math.SQRT2 : Infinity;
-    const ud = cellOk ? Math.abs(fx + fy - 1) / Math.SQRT2 : Infinity;
+    const dd = Math.abs(fx - fy) / Math.SQRT2;
+    const ud = Math.abs(fx + fy - 1) / Math.SQRT2;
     const orth = Math.min(hd, vd);
     const diag = Math.min(dd, ud);
     if (diag < 0.16 && diag < orth) return dd <= ud ? `d:${cx}:${cy}` : `u:${cx}:${cy}`;
@@ -526,7 +561,6 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   const nearestNode = ([gx, gy]: [number, number]): [number, number] | null => {
     const x = Math.round(gx);
     const y = Math.round(gy);
-    if (x < 0 || y < 0 || x > board.cols || y > board.rows) return null;
     return Math.hypot(gx - x, gy - y) < 0.38 ? [x, y] : null;
   };
 
@@ -536,7 +570,77 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   let wireDrew = false;
   let moving: { key: EdgeKey; moved: boolean; x: number; y: number } | null = null;
 
+  // ───────── Nézet: mozgatás és nagyítás (végtelen tábla) ─────────
+
+  const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+  /** Nagyítás úgy, hogy a mutató alatti pont a helyén marad. */
+  const zoomAt = (clientX: number, clientY: number, factor: number) => {
+    const r = svg.getBoundingClientRect();
+    const z = clampZoom(view.zoom * factor);
+    const wx = view.x + (clientX - r.left) / view.zoom;
+    const wy = view.y + (clientY - r.top) / view.zoom;
+    view.zoom = z;
+    view.x = wx - (clientX - r.left) / z;
+    view.y = wy - (clientY - r.top) / z;
+    draw();
+  };
+  /** A teljes rajz a nézet közepére (ha üres a tábla, az origó környéke). */
+  const fitView = () => {
+    const [vw, vh] = viewSize();
+    const pts = Object.keys(board.parts).flatMap((k) => edgeEnds(k));
+    if (!pts.length) {
+      view.zoom = 1;
+      view.x = -CELL;
+      view.y = -CELL;
+    } else {
+      const x1 = (Math.min(...pts.map((q) => q[0])) - 1.2) * CELL;
+      const y1 = (Math.min(...pts.map((q) => q[1])) - 1.2) * CELL;
+      const x2 = (Math.max(...pts.map((q) => q[0])) + 1.2) * CELL;
+      const y2 = (Math.max(...pts.map((q) => q[1])) + 1.2) * CELL;
+      view.zoom = clampZoom(Math.min(1, vw / (x2 - x1), vh / (y2 - y1)));
+      view.x = (x1 + x2) / 2 - vw / view.zoom / 2;
+      view.y = (y1 + y2) / 2 - vh / view.zoom / 2;
+    }
+    draw();
+  };
+  svg.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018)));
+    },
+    { passive: false },
+  );
+  svg.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  /** Lenyomott mutatók (két ujjnál nagyítás és mozgatás). */
+  const touches = new Map<number, { x: number; y: number }>();
+  let panning: { x: number; y: number; vx: number; vy: number } | null = null;
+  let pinch: { dist: number; zoom: number; wx: number; wy: number } | null = null;
+  const pinchState = () => {
+    const [a, b] = [...touches.values()];
+    return { dist: Math.hypot(a!.x - b!.x, a!.y - b!.y) || 1, mx: (a!.x + b!.x) / 2, my: (a!.y + b!.y) / 2 };
+  };
+
   svg.addEventListener('pointerdown', (e) => {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {
+      // Második ujj: a folyamatban lévő rajzolás megszakad, innen nagyítás / mozgatás.
+      wireFrom = null;
+      moving = null;
+      panning = null;
+      const r = svg.getBoundingClientRect();
+      const st = pinchState();
+      pinch = { dist: st.dist, zoom: view.zoom, wx: view.x + (st.mx - r.left) / view.zoom, wy: view.y + (st.my - r.top) / view.zoom };
+      return;
+    }
+    // Mozgatás eszközzel, vagy bármikor a középső / jobb egérgombbal húzva.
+    if (tool === 'pan' || e.button === 1 || e.button === 2) {
+      e.preventDefault();
+      svg.setPointerCapture(e.pointerId);
+      panning = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
+      return;
+    }
     const pos = gridPos(e);
     const edge = nearestEdge(pos);
     const hit = (e.target as Element).closest<SVGGElement>('.bp')?.dataset.key ?? null;
@@ -571,6 +675,22 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   });
 
   svg.addEventListener('pointermove', (e) => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && touches.size === 2) {
+      const r = svg.getBoundingClientRect();
+      const st = pinchState();
+      view.zoom = clampZoom((pinch.zoom * st.dist) / pinch.dist);
+      view.x = pinch.wx - (st.mx - r.left) / view.zoom;
+      view.y = pinch.wy - (st.my - r.top) / view.zoom;
+      draw();
+      return;
+    }
+    if (panning) {
+      view.x = panning.vx - (e.clientX - panning.x) / view.zoom;
+      view.y = panning.vy - (e.clientY - panning.y) / view.zoom;
+      draw();
+      return;
+    }
     const pos = gridPos(e);
     if (wireFrom) {
       const node = nearestNode(pos);
@@ -599,7 +719,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       }
       return;
     }
-    const edge = tool === 'erase' ? null : nearestEdge(pos);
+    const edge = tool === 'erase' || tool === 'pan' ? null : nearestEdge(pos);
     if (edge !== hoverEdge) {
       hoverEdge = edge;
       draw();
@@ -607,6 +727,15 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   });
 
   const endDrag = (e: PointerEvent) => {
+    touches.delete(e.pointerId);
+    if (pinch) {
+      if (touches.size < 2) pinch = null;
+      return;
+    }
+    if (panning) {
+      panning = null;
+      return;
+    }
     if (moving) {
       const m = moving;
       moving = null;
@@ -648,13 +777,14 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   const setTool = (t: Tool) => {
     tool = t;
     for (const [id, b] of toolBtns) b.setAttribute('aria-pressed', String(id === t));
+    svg.style.cursor = t === 'pan' ? 'grab' : '';
     selected = null;
     hoverEdge = null;
     draw();
     renderEditor();
   };
   const palette = h('div', { class: 'builder-tools', attrs: { role: 'toolbar', 'aria-label': 'Eszközök' } });
-  for (const t of ['wire', 'R', 'V', 'I', 'erase'] as Tool[]) {
+  for (const t of ['wire', 'R', 'V', 'I', 'erase', 'pan'] as Tool[]) {
     const b = h('button', {
       class: 'builder-tool',
       attrs: { type: 'button', 'aria-pressed': String(t === tool), title: TOOL_NAMES[t] },
@@ -662,7 +792,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     });
     toolBtns.set(t, b);
     b.addEventListener('click', () => setTool(t));
-    if (t !== 'erase') {
+    if (t !== 'erase' && t !== 'pan') {
       const kind: PartKind = t === 'wire' ? 'W' : t;
       // Húzás az eszköztárról: a gomb képe követi a mutatót, a rácson a legközelebbi vonalra kerül.
       let ghost: HTMLElement | null = null;
@@ -722,6 +852,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       selected = null;
       recompute();
       renderEditor();
+      fitView();
     }, 'quiet'),
     button('Mindent töröl', () => {
       board.parts = {};
@@ -760,7 +891,22 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   };
   document.addEventListener('keydown', onKey);
 
+  // Nézetvezérlők a tábla sarkában: kicsinyítés, nagyítás, a rajz középre igazítása.
+  const center = () => {
+    const r = svg.getBoundingClientRect();
+    return [r.left + r.width / 2, r.top + r.height / 2] as const;
+  };
+  const zoomBtn = (text: string, label: string, fn: () => void) => h('button', { class: 'builder-zoom-btn', attrs: { type: 'button', 'aria-label': label, title: label }, text, on: { click: fn } });
+  zoomCtl.append(
+    zoomBtn('−', 'Kicsinyítés', () => zoomAt(...center(), 1 / 1.25)),
+    zoomBtn('+', 'Nagyítás', () => zoomAt(...center(), 1.25)),
+    zoomBtn('Középre', 'A rajz középre igazítása', () => fitView()),
+  );
+
   recompute();
   renderEditor();
+  // A tábla mérete csak megjelenítés után ismert: akkor igazítjuk középre a rajzot, és követjük az átméretezést.
+  requestAnimationFrame(() => fitView());
+  new ResizeObserver(() => root.isConnected && draw()).observe(svg);
   return root;
 }
