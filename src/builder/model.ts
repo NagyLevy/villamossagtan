@@ -29,6 +29,7 @@ export interface Part {
 export type EdgeKey = string;
 
 export interface Board {
+  /** Régi mentésekből maradt méret; a tábla végtelen, a számolás nem használja. */
   cols: number;
   rows: number;
   parts: Record<EdgeKey, Part>;
@@ -92,7 +93,12 @@ export function buildProblem(board: Board): BuildResult {
   if (!kinds.includes('R')) return fail('A zárt körben nincs ellenállás: tegyél bele legalább egyet.');
 
   // Pontok (a rajzoló 2 rácsegységnyi élekkel dolgozik, mint a generált feladatoknál).
-  const pid = (p: [number, number]) => p[1] * (board.cols + 1) + p[0];
+  // A rajztábla végtelen (a koordináták negatívak is lehetnek): a használt rész bal felső sarkához igazítunk.
+  const all = [...parts.keys()].flatMap((k) => edgeEnds(k));
+  const minX = Math.min(...all.map((p) => p[0]));
+  const minY = Math.min(...all.map((p) => p[1]));
+  const width = Math.max(...all.map((p) => p[0])) - minX + 1;
+  const pid = (p: [number, number]) => (p[1] - minY) * width + (p[0] - minX);
   const used = new Map<number, [number, number]>();
   for (const k of parts.keys()) for (const p of edgeEnds(k)) used.set(pid(p), p);
   const uf = new UnionFind(Math.max(...used.keys()) + 1);
@@ -107,7 +113,7 @@ export function buildProblem(board: Board): BuildResult {
     const el: CircuitElement | null = part.kind === 'W' ? null : { id: '', kind: part.kind, value: part.value, dir: part.kind === 'R' ? 1 : part.dir };
     return { id: '', key, from: pid(a), to: pid(b), elements: el ? [el] : [] };
   });
-  const raw: Circuit = { points: [...used.entries()].map(([id, [x, y]]) => ({ id, x: x * 2, y: y * 2 })), branches };
+  const raw: Circuit = { points: [...used.entries()].map(([id, [x, y]]) => ({ id, x: (x - minX) * 2, y: (y - minY) * 2 })), branches };
   const circuit = finalize(raw);
   const names = new Map<EdgeKey, string>();
   for (const b of circuit.branches) {

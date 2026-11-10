@@ -161,7 +161,10 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   (ellenállás, feszültség- és áramforrás) az eszköztárról a rácsvonalakra húzhatók, a vezeték pontról pontra húzva
   rajzolható, vagy üres rácsvonalra kattintva kerül oda; minden elem és vezeték átlósan (egy négyzet átlójára,
   45°) is tehető, egy négyzetben csak az egyik átló lehet foglalt; elemre kattintva érték, megfordítás, törlés, az
-  érték a rajzon a számra kattintva helyben is átírható. Minden változás után újraszámol: táblázat minden elem
+  érték a rajzon a számra kattintva helyben is átírható. A tábla **végtelen** (a koordináták negatívak is lehetnek): görgővel
+  vagy két ujjal nagyítható, a „Mozgatás” eszközzel (vagy jobb / középső gombbal húzva) eltolható, a „Középre” gomb
+  a rajzra igazít. A feliratok oda kerülnek, ahol a legkevesebbet takarnak (`layoutLabels`); **a forrás értéke
+  mindig a nyila mellett áll**. A „Színkód” kapcsoló (alapból ki) elemenként külön színt ad. A fül mellett „Béta”. Minden változás után újraszámol: táblázat minden elem
   U, I, P értékével (MNA), alatta a megoldás nézete (`solved` nézet), ahol minden alkalmazható módszer levezetése
   választható, és a módszerek össze vannak vetve. A lógó végek kimaradnak, a hibás rajzra (nincs forrás, rövidre
   zárt elem, két külön kör, párhuzamos feszültségforrások) magyar üzenet jön. Teszt: `builder.test.ts`.
