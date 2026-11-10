@@ -486,7 +486,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
             tool === 'wire'
               ? 'Vezeték: kattints egy rácsvonalra vagy egy négyzet átlójára (a kék sáv mutatja, hová kerül), vagy húzd pontról pontra. Az értéket a számra kattintva írhatod át.'
               : tool === 'erase'
-                ? 'Radír: kattints arra az elemre vagy vezetékre, amit törölni szeretnél.'
+                ? 'Radír: tartsd lenyomva és húzd végig azon, amit törölni szeretnél (kattintani is lehet). Ctrl + Z visszahozza.'
                 : tool === 'pan'
                   ? 'Mozgatás: húzd a táblát bármerre. Görgővel (vagy két ujjal) nagyíthatsz és kicsinyíthetsz; a tábla végtelen.'
                 : `${TOOL_NAMES[tool]}: kattints egy rácsvonalra vagy egy négyzet átlójára (keresztbe), vagy húzd oda a gombot az eszköztárról.`,
@@ -673,6 +673,26 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   );
   svg.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  // Radírozás húzva: ami a mutató közelébe kerül (az elem vonalától kb. egy ötöd rácsnyira), törlődik.
+  let erasing = false;
+  let lastErase: [number, number] | null = null;
+  const eraseAt = (pos: [number, number]): boolean => {
+    lastErase = pos;
+    let changed = false;
+    for (const key of Object.keys(board.parts)) {
+      const [a, b] = edgeEnds(key);
+      // A pont távolsága a szakasztól (rácsegységben).
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const t = Math.max(0, Math.min(1, ((pos[0] - a[0]) * dx + (pos[1] - a[1]) * dy) / (dx * dx + dy * dy)));
+      if (Math.hypot(pos[0] - (a[0] + t * dx), pos[1] - (a[1] + t * dy)) < 0.2) {
+        delete board.parts[key];
+        changed = true;
+      }
+    }
+    return changed;
+  };
+
   /** Lenyomott mutatók (két ujjnál nagyítás és mozgatás). */
   const touches = new Map<number, { x: number; y: number }>();
   let panning: { x: number; y: number; vx: number; vy: number } | null = null;
@@ -689,6 +709,11 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       wireFrom = null;
       moving = null;
       panning = null;
+      if (erasing) {
+        erasing = false;
+        lastErase = null;
+        recompute();
+      }
       const r = svg.getBoundingClientRect();
       const st = pinchState();
       pinch = { dist: st.dist, zoom: view.zoom, wx: view.x + (st.mx - r.left) / view.zoom, wy: view.y + (st.my - r.top) / view.zoom };
@@ -713,8 +738,13 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     }
     svg.setPointerCapture(e.pointerId);
     if (tool === 'erase') {
+      // Radír, mint a rajzprogramokban: lenyomva húzható, és amin áthalad, az törlődik (egy visszavonási lépés).
+      erasing = true;
       const key = hit ?? (edge && board.parts[edge] ? edge : null);
-      if (key) remove(key);
+      if (key) delete board.parts[key];
+      eraseAt(pos);
+      selected = null;
+      draw();
       return;
     }
     if (tool === 'R' || tool === 'V' || tool === 'I') {
@@ -752,6 +782,15 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       return;
     }
     const pos = gridPos(e);
+    if (erasing) {
+      // Gyors húzásnál a két esemény között is törlünk, hogy ne maradjon ki semmi.
+      const from = lastErase ?? pos;
+      const steps = Math.max(1, Math.ceil(Math.hypot(pos[0] - from[0], pos[1] - from[1]) / 0.1));
+      let changed = false;
+      for (let i = 1; i <= steps; i++) changed = eraseAt([from[0] + ((pos[0] - from[0]) * i) / steps, from[1] + ((pos[1] - from[1]) * i) / steps]) || changed;
+      if (changed) draw();
+      return;
+    }
     if (wireFrom) {
       const node = nearestNode(pos);
       if (node && (node[0] !== wireFrom[0] || node[1] !== wireFrom[1])) {
@@ -794,6 +833,13 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     }
     if (panning) {
       panning = null;
+      return;
+    }
+    if (erasing) {
+      erasing = false;
+      lastErase = null;
+      recompute();
+      renderEditor();
       return;
     }
     if (moving) {

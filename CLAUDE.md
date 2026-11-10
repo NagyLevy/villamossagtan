@@ -168,7 +168,8 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   Shift + húzással is mozgatható; a „Kósza elemek törlése” gomb a zárt körbe nem kötött (szaggatott) elemeket törli;
   a tábla alatt rövid útmutató áll. Az elemek neve a **letevés sorrendjét** követi (R1, R2, R3 …; Ug1 …; Ig1 …, `Part.n`):
   áthelyezéskor megmarad, az új elem a legkisebb szabad számot kapja (nem az értékből és nem a helyből jön). A sorszám az
-  alsó sávban kézzel is átírható (`renumber`); foglalt számnál a két elem számot cserél. A fül mellett „Béta”. Minden változás után újraszámol: táblázat minden elem
+  alsó sávban kézzel is átírható (`renumber`); foglalt számnál a két elem számot cserél. A radír lenyomva
+  húzható, mint a rajzprogramokban: amin áthalad, törli (egy visszavonási lépés). A fül mellett „Béta”. Minden változás után újraszámol: táblázat minden elem
   U, I, P értékével (MNA), alatta a megoldás nézete (`solved` nézet), ahol minden alkalmazható módszer levezetése
   választható, és a módszerek össze vannak vetve. A lógó végek kimaradnak, a hibás rajzra (nincs forrás, rövidre
   zárt elem, két külön kör, párhuzamos feszültségforrások) magyar üzenet jön. Teszt: `builder.test.ts`.
