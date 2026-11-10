@@ -11,7 +11,7 @@ import { h } from './dom';
 import type { TaskViewer } from './viewer';
 
 const CELL = 124;
-const PAD = 58;
+const PAD = 84;
 const KEY = 'villamossagtan.epito.v1';
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -84,44 +84,61 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
 
   type Box = { x1: number; y1: number; x2: number; y2: number };
   const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)) * Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+  const around = (x: number, y: number, r: number): Box => ({ x1: x - r, y1: y - r, x2: x + r, y2: y + r });
 
-  /** Egy elem helye a rajzon: közép, szög (0°, 90°, ±45°), és az elem testének befoglaló doboza. */
-  const geometry = (key: EdgeKey, part: Part) => {
+  /** Egy elem helye a rajzon: végpontok, közép, szög (0°, 90°, ±45°). */
+  const geometry = (key: EdgeKey) => {
     const [a, b] = edgeEnds(key);
     const [x1, y1] = px(a);
     const [x2, y2] = px(b);
-    const cx = (x1 + x2) / 2;
-    const cy = (y1 + y2) / 2;
     const angle = y1 === y2 ? 0 : x1 === x2 ? 90 : y2 > y1 ? 45 : -45;
-    const half = part.kind === 'W' ? [0, 0] : part.kind === 'R' ? (angle === 0 ? [26, 12] : angle === 90 ? [12, 26] : [22, 22]) : [18, 18];
-    const body: Box = { x1: cx - half[0]!, y1: cy - half[1]!, x2: cx + half[0]!, y2: cy + half[1]! };
-    return { x1, y1, x2, y2, cx, cy, angle, body };
+    return { x1, y1, x2, y2, cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, angle };
+  };
+  type Geo = ReturnType<typeof geometry>;
+
+  /** A felirat helye: az elem közepétől `dir` irányban (fok, a képernyőn), közel vagy távolabb. */
+  interface Spot {
+    dir: number;
+    /** Távolság: 0 = közvetlenül az elem mellett, 1 = kicsit távolabb, 2 = a forrás nyilán is túl. */
+    far: 0 | 1 | 2;
+  }
+  /** A lehetséges helyek: körben 45°-onként, három távolságban. */
+  const SPOTS: Spot[] = [0, 45, 90, 135, 180, 225, 270, 315].flatMap((dir) => ([0, 1, 2] as const).map((far) => ({ dir, far })));
+
+  /** A felirat sorai: fölötte / alatta egy sorban („R4 = 4 Ω”), oldalt két sorban (név, alatta az érték). */
+  const labelLines = (key: EdgeKey, part: Part, spot: Spot): string[] => {
+    const name = names.get(key);
+    const value = formatQuantity(part.value, UNIT_OF[part.kind]);
+    if (!name) return [value];
+    return spot.dir === 90 || spot.dir === 270 ? [`${name} = ${value}`] : [name, value];
   };
 
-  /**
-   * A felirat helye az elem egyik oldalán. `side` = +1: az elem „felső” oldala (vízszintesnél fölötte,
-   * függőlegesnél jobbra, átlósnál a felső sarokban), −1: az átellenes oldal. Vízszintes elemnél egy sor
-   * („R4 = 4 Ω”), különben két sor (név, alatta az érték), hogy a szomszédos ágba ne lógjon át.
-   */
-  const labelSpot = (g: ReturnType<typeof geometry>, part: Part, lines: string[], side: 1 | -1) => {
-    const rad = (g.angle * Math.PI) / 180;
-    const nx = Math.sin(rad) * side;
-    const ny = -Math.cos(rad) * side;
-    const w = Math.max(...lines.map((t) => t.length)) * 8.2 + 4;
+  /** A felirat doboza és a szöveg igazítása az adott helyen. */
+  const labelBox = (g: Geo, part: Part, lines: string[], spot: Spot) => {
+    const rad = (spot.dir * Math.PI) / 180;
+    const ux = Math.round(Math.cos(rad) * 100) / 100;
+    const uy = Math.round(Math.sin(rad) * 100) / 100;
+    const w = Math.max(...lines.map((t) => t.length)) * 8.4 + 4;
     const hgt = lines.length * 16 + 2;
-    const d = (part.kind === 'R' ? 14 : 20) + 5;
-    const flat = Math.abs(nx) < 0.1;
-    const anchor = flat ? 'middle' : nx > 0 ? 'start' : 'end';
-    const diag = !flat && Math.abs(ny) > 0.1;
-    const k = diag ? 0.72 : 1;
-    const x = flat ? g.cx : g.cx + Math.sign(nx) * d * k;
-    const top = flat ? (ny < 0 ? g.cy - d - hgt : g.cy + d) : diag ? (ny < 0 ? g.cy - d * k - hgt : g.cy + d * k) : g.cy - hgt / 2;
-    const box: Box = { x1: anchor === 'middle' ? x - w / 2 : anchor === 'start' ? x : x - w, y1: top, x2: anchor === 'middle' ? x + w / 2 : anchor === 'start' ? x + w : x, y2: top + hgt };
-    return { x, top, anchor, box };
+    const near = (part.kind === 'R' ? 13 : 19) + 5;
+    const dist = (near + [0, 20, 38][spot.far]!) * (ux !== 0 && uy !== 0 ? 0.8 : 1);
+    const x = g.cx + Math.sign(ux) * dist;
+    const y = g.cy + Math.sign(uy) * dist;
+    const anchor = ux > 0.3 ? 'start' : ux < -0.3 ? 'end' : 'middle';
+    const top = uy > 0.3 ? y : uy < -0.3 ? y - hgt : y - hgt / 2;
+    const left = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2;
+    return { x, top, anchor, box: { x1: left, y1: top, x2: left + w, y2: top + hgt } as Box };
   };
 
-  const partSvg = (key: EdgeKey, part: Part, side: 1 | -1 = 1): SVGGElement => {
-    const geo = geometry(key, part);
+  /** A forrás nyilának doboza az elem egyik oldalán (side = ±1, az elem saját tengelyére merőlegesen). */
+  const arrowBox = (g: Geo, side: 1 | -1): Box => {
+    const rad = (g.angle * Math.PI) / 180;
+    // A rajzban a nyíl a helyi (0, 26·side) pontban fut: ez a képernyőn (−sin, cos) · 26 · side.
+    return around(g.cx - Math.sin(rad) * 26 * side, g.cy + Math.cos(rad) * 26 * side, 13);
+  };
+
+  const partSvg = (key: EdgeKey, part: Part, place: { spot: Spot; arrow: 1 | -1 }): SVGGElement => {
+    const geo = geometry(key);
     const { x1, y1, x2, y2, cx, cy, angle } = geo;
     const cls = ['bp', `bp-${part.kind}`, key === selected ? 'is-selected' : '', dangling.has(key) ? 'is-dangling' : ''].filter(Boolean).join(' ');
     const g = svgEl('g', { class: cls });
@@ -140,18 +157,17 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       // a nyíl a „from” felé mutat). Áram: az áram irányába (dir = +1: from → to).
       const toward = part.kind === 'V' ? -part.dir : part.dir;
       const tip = 13 * toward;
-      // A nyíl mindig a felirattal ellentétes oldalon fut.
-      const ay = 26 * side;
+      const ay = 26 * place.arrow;
       const arrow = svgEl('path', { d: `M${-tip} ${ay}H${tip}M${tip - 6 * toward} ${ay - 4}L${tip} ${ay}L${tip - 6 * toward} ${ay + 4}`, class: `bp-arrow${part.kind === 'I' ? ' is-solid' : ''}` });
       body.append(arrow);
     }
     g.append(body);
     if (part.kind !== 'W') {
-      const lines = labelLines(key, part, angle);
-      const spot = labelSpot(geo, part, lines, side);
-      const label = svgEl('text', { x: spot.x, y: spot.top + 13, 'text-anchor': spot.anchor, class: 'bp-label' });
+      const lines = labelLines(key, part, place.spot);
+      const at = labelBox(geo, part, lines, place.spot);
+      const label = svgEl('text', { x: at.x, y: at.top + 13, 'text-anchor': at.anchor, class: 'bp-label' });
       lines.forEach((t, i) => {
-        const ts = svgEl('tspan', { x: spot.x, dy: i === 0 ? 0 : 16, class: i === 0 ? '' : 'bp-label-value' });
+        const ts = svgEl('tspan', { x: at.x, dy: i === 0 ? 0 : 16, class: i === 0 ? '' : 'bp-label-value' });
         ts.textContent = t;
         label.append(ts);
       });
@@ -160,52 +176,60 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     return g;
   };
 
-  const labelLines = (key: EdgeKey, part: Part, angle: number): string[] => {
-    const name = names.get(key);
-    const value = formatQuantity(part.value, UNIT_OF[part.kind]);
-    if (!name) return [value];
-    return angle === 0 ? [`${name} = ${value}`] : [name, value];
-  };
-
   /**
-   * Feliratok oldala: minden elemnél az az oldal, ahol a felirat a legkevésbé takar (más elemek teste, a már
-   * elhelyezett feliratok, vezetékek, a rajz széle). Így a sűrű rajzon sem csúsznak egymásra a számok.
+   * Feliratok és forrásnyilak helye. A rajz minden „tintája” (vezetékek, elemek teste) apró dobozokra bontva
+   * akadály; minden felirat a 16 lehetséges hely közül oda kerül, ahol a legkevesebbet takar (tinta, a már
+   * elhelyezett feliratok és nyilak, a rajz széle). Így sűrű, átlós elemekkel teli rajzon sem csúsznak egymásra.
    */
-  const labelSides = (): Map<EdgeKey, 1 | -1> => {
+  const layoutLabels = (): Map<EdgeKey, { spot: Spot; arrow: 1 | -1 }> => {
     const entries = Object.entries(board.parts);
-    const geos = new Map(entries.map(([k, p]) => [k, geometry(k, p)]));
-    const bodies = entries.filter(([, p]) => p.kind !== 'W').map(([k]) => ({ key: k, box: geos.get(k)!.body }));
-    // A vezetékek és az elemek kivezetései vékony sávként számítanak (átlósnál a befoglaló négyzet közepe).
-    const wires: { key: EdgeKey; box: Box }[] = entries.map(([k]) => {
+    const geos = new Map(entries.map(([k]) => [k, geometry(k)]));
+    const ink: Box[] = [];
+    for (const [k, p] of entries) {
       const g = geos.get(k)!;
-      const pad = g.angle === 0 || g.angle === 90 ? 3 : -CELL * 0.3;
-      return { key: k, box: { x1: Math.min(g.x1, g.x2) - pad, y1: Math.min(g.y1, g.y2) - pad, x2: Math.max(g.x1, g.x2) + pad, y2: Math.max(g.y1, g.y2) + pad } };
-    });
-    const placed: Box[] = [];
-    const out = new Map<EdgeKey, 1 | -1>();
+      const len = Math.hypot(g.x2 - g.x1, g.y2 - g.y1);
+      // A vezeték (és az elem kivezetései) a vonal mentén mintavételezve.
+      for (let t = 0; t <= len; t += 8) ink.push(around(g.x1 + ((g.x2 - g.x1) * t) / len, g.y1 + ((g.y2 - g.y1) * t) / len, 4));
+      if (p.kind === 'R') for (let t = -20; t <= 20; t += 10) ink.push(around(g.cx + ((g.x2 - g.x1) * t) / len, g.cy + ((g.y2 - g.y1) * t) / len, 12));
+      else if (p.kind !== 'W') ink.push(around(g.cx, g.cy, 18));
+    }
+    const taken: Box[] = [];
+    const costOf = (b: Box) => {
+      const pad: Box = { x1: b.x1 - 3, y1: b.y1 - 3, x2: b.x2 + 3, y2: b.y2 + 3 };
+      let c = 0;
+      for (const o of ink) c += overlap(pad, o);
+      for (const o of taken) c += overlap(pad, o) * 3;
+      if (b.x1 < 2 || b.y1 < 2 || b.x2 > W - 2 || b.y2 > H - 2) c += 1e6;
+      return c;
+    };
+    const out = new Map<EdgeKey, { spot: Spot; arrow: 1 | -1 }>();
+    // Előbb a forrásnyilak (csak két helyük lehet), utána a feliratok.
+    for (const [key, part] of entries) {
+      if (part.kind !== 'V' && part.kind !== 'I') continue;
+      const g = geos.get(key)!;
+      const arrow: 1 | -1 = costOf(arrowBox(g, 1)) <= costOf(arrowBox(g, -1)) ? 1 : -1;
+      out.set(key, { spot: SPOTS[0]!, arrow });
+      taken.push(arrowBox(g, arrow));
+    }
     for (const [key, part] of entries) {
       if (part.kind === 'W') continue;
       const g = geos.get(key)!;
-      const lines = labelLines(key, part, g.angle);
-      const cost = (side: 1 | -1) => {
-        const b = labelSpot(g, part, lines, side).box;
-        let c = 0;
-        for (const o of bodies) if (o.key !== key) c += overlap(b, o.box) * 10;
-        for (const o of placed) c += overlap(b, o) * 10;
-        for (const o of wires) if (o.key !== key) c += overlap(b, o.box);
-        if (b.x1 < 0 || b.y1 < 0 || b.x2 > W || b.y2 > H) c += 5000;
-        // A forrás nyila az átellenes oldalra kerül: ott se takarjon elemet.
-        if (part.kind !== 'R') {
-          const a = labelSpot(g, part, ['→→'], -side as 1 | -1).box;
-          for (const o of bodies) if (o.key !== key) c += overlap(a, o.box) * 5;
+      // A szokásos hely az elem „fölött” (vízszintesnél fölötte, függőlegesnél jobbra); a többi csak ha ott takarna.
+      const home = g.angle === 0 ? 270 : g.angle === 90 ? 0 : g.angle === 45 ? 315 : 225;
+      let best: Spot = SPOTS[0]!;
+      let bestCost = Infinity;
+      for (const spot of SPOTS) {
+        const turn = Math.min(Math.abs(spot.dir - home), 360 - Math.abs(spot.dir - home));
+        // Az elem két oldala (a tengelyére merőlegesen) a természetes hely; a sarkok csak végszükségben.
+        const bias = (turn === 0 ? 0 : turn === 180 ? 1 : 3 + turn / 45) + spot.far * 1.2;
+        const c = costOf(labelBox(g, part, labelLines(key, part, spot), spot).box) + bias;
+        if (c < bestCost) {
+          bestCost = c;
+          best = spot;
         }
-        return c;
-      };
-      const side: 1 | -1 = cost(1) <= cost(-1) ? 1 : -1;
-      out.set(key, side);
-      placed.push(labelSpot(g, part, lines, side).box);
-      // A forrás nyila is foglal helyet: a később elhelyezett feliratok azt is kerülik.
-      if (part.kind !== 'R') placed.push(labelSpot(g, part, ['→→'], -side as 1 | -1).box);
+      }
+      out.set(key, { spot: best, arrow: out.get(key)?.arrow ?? 1 });
+      taken.push(labelBox(g, part, labelLines(key, part, best), best).box);
     }
     return out;
   };
@@ -224,10 +248,10 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       const [x2, y2] = px(b);
       kids.push(svgEl('line', { x1, y1, x2, y2, class: 'bg-hover' }));
     }
-    const sides = labelSides();
+    const places = layoutLabels();
     // Előbb a vezetékek, utána az elemek: a feliratok így mindig felül vannak.
     const sorted = Object.entries(board.parts).sort(([, p], [, q]) => Number(p.kind !== 'W') - Number(q.kind !== 'W'));
-    for (const [key, part] of sorted) kids.push(partSvg(key, part, sides.get(key) ?? 1));
+    for (const [key, part] of sorted) kids.push(partSvg(key, part, places.get(key) ?? { spot: SPOTS[0]!, arrow: 1 }));
     // Csomópont-pötty, ahol legalább három szakasz találkozik.
     const degree = new Map<string, number>();
     for (const key of Object.keys(board.parts)) for (const p of edgeEnds(key)) degree.set(p.join(','), (degree.get(p.join(',')) ?? 0) + 1);
