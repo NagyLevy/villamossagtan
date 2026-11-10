@@ -1399,7 +1399,7 @@ h2.daily-title {
   border-color: var(--danger);
 }
 
-/* Építő: színkód. Minden adattal bíró elem saját színt kap (a rajzon, a feliratán és a táblázatban). */
+/* Építő: színkód. Csak az a forrás kap színt, amelyiknek a felirata távolabb került (a rajzon, a feliratán és a táblázatban). */
 :root {
   --bc-0: #1f5bff;
   --bc-1: #c2410c;

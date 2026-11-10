@@ -74,16 +74,12 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   let hoverEdge: EdgeKey | null = null;
   let names = new Map<EdgeKey, string>();
   let dangling = new Set<EdgeKey>();
-  /** Színkód: minden adattal bíró elem (ellenállás, forrás) saját színt kap; a felirata és a táblázat sora is ilyen. */
+  /**
+   * Színkód: csak annak a forrásnak jár, amelyiknek a felirata nem fért el közvetlenül mellette (távolabb vagy
+   * más oldalra került): ott a szín mutatja, melyik szám melyik forrásé. A többi elem tintaszínű marad.
+   */
   const COLORS = 10;
   let colorOf = new Map<EdgeKey, number>();
-  const assignColors = () => {
-    const keys = Object.entries(board.parts)
-      .filter(([, p]) => p.kind !== 'W')
-      .map(([k]) => k)
-      .sort((a, b) => (names.get(a) ?? a).localeCompare(names.get(b) ?? b, 'hu', { numeric: true }));
-    colorOf = new Map(keys.map((k, i) => [k, i % COLORS]));
-  };
 
   const W = board.cols * CELL + PAD * 2;
   const H = board.rows * CELL + PAD * 2;
@@ -147,7 +143,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     return around(g.cx - Math.sin(rad) * 26 * side, g.cy + Math.cos(rad) * 26 * side, 13);
   };
 
-  const partSvg = (key: EdgeKey, part: Part, place: { spot: Spot; arrow: 1 | -1 }): SVGGElement => {
+  const partSvg = (key: EdgeKey, part: Part, place: { spot: Spot; arrow: 1 | -1; moved: boolean }): SVGGElement => {
     const geo = geometry(key);
     const { x1, y1, x2, y2, cx, cy, angle } = geo;
     const cls = ['bp', `bp-${part.kind}`, key === selected ? 'is-selected' : '', dangling.has(key) ? 'is-dangling' : ''].filter(Boolean).join(' ');
@@ -192,7 +188,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
    * akadály; minden felirat a 16 lehetséges hely közül oda kerül, ahol a legkevesebbet takar (tinta, a már
    * elhelyezett feliratok és nyilak, a rajz széle). Így sűrű, átlós elemekkel teli rajzon sem csúsznak egymásra.
    */
-  const layoutLabels = (): Map<EdgeKey, { spot: Spot; arrow: 1 | -1 }> => {
+  const layoutLabels = (): Map<EdgeKey, { spot: Spot; arrow: 1 | -1; moved: boolean }> => {
     const entries = Object.entries(board.parts);
     const geos = new Map(entries.map(([k]) => [k, geometry(k)]));
     const ink: Box[] = [];
@@ -213,13 +209,13 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       if (b.x1 < 2 || b.y1 < 2 || b.x2 > W - 2 || b.y2 > H - 2) c += 1e6;
       return c;
     };
-    const out = new Map<EdgeKey, { spot: Spot; arrow: 1 | -1 }>();
+    const out = new Map<EdgeKey, { spot: Spot; arrow: 1 | -1; moved: boolean }>();
     // Előbb a forrásnyilak (csak két helyük lehet), utána a feliratok.
     for (const [key, part] of entries) {
       if (part.kind !== 'V' && part.kind !== 'I') continue;
       const g = geos.get(key)!;
       const arrow: 1 | -1 = costOf(arrowBox(g, 1)) <= costOf(arrowBox(g, -1)) ? 1 : -1;
-      out.set(key, { spot: SPOTS[0]!, arrow });
+      out.set(key, { spot: SPOTS[0]!, arrow, moved: false });
       taken.push(arrowBox(g, arrow));
     }
     for (const [key, part] of entries) {
@@ -239,7 +235,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
           best = spot;
         }
       }
-      out.set(key, { spot: best, arrow: out.get(key)?.arrow ?? 1 });
+      // Elmozdult: nem a szokásos, közvetlenül az elem melletti helyre került.
+      out.set(key, { spot: best, arrow: out.get(key)?.arrow ?? 1, moved: best.dir !== home || best.far > 0 });
       taken.push(labelBox(g, part, labelLines(key, part, best), best).box);
     }
     return out;
@@ -259,11 +256,15 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       const [x2, y2] = px(b);
       kids.push(svgEl('line', { x1, y1, x2, y2, class: 'bg-hover' }));
     }
-    assignColors();
     const places = layoutLabels();
+    const movedSources = Object.entries(board.parts)
+      .filter(([k, p]) => (p.kind === 'V' || p.kind === 'I') && places.get(k)?.moved)
+      .map(([k]) => k)
+      .sort((a, b) => (names.get(a) ?? a).localeCompare(names.get(b) ?? b, 'hu', { numeric: true }));
+    colorOf = new Map(movedSources.map((k, i) => [k, i % COLORS]));
     // Előbb a vezetékek, utána az elemek: a feliratok így mindig felül vannak.
     const sorted = Object.entries(board.parts).sort(([, p], [, q]) => Number(p.kind !== 'W') - Number(q.kind !== 'W'));
-    for (const [key, part] of sorted) kids.push(partSvg(key, part, places.get(key) ?? { spot: SPOTS[0]!, arrow: 1 }));
+    for (const [key, part] of sorted) kids.push(partSvg(key, part, places.get(key) ?? { spot: SPOTS[0]!, arrow: 1, moved: false }));
     // Csomópont-pötty, ahol legalább három szakasz találkozik.
     const degree = new Map<string, number>();
     for (const key of Object.keys(board.parts)) for (const p of edgeEnds(key)) degree.set(p.join(','), (degree.get(p.join(',')) ?? 0) + 1);
@@ -313,8 +314,9 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
             ...tableTargets(p).map((t) => {
               // Ugyanaz a szín, mint a rajzon.
               const key = [...names].find(([, id]) => id === t.element)?.[0];
-              const dot = h('i', { class: 'builder-dot' });
-              if (key && colorOf.has(key)) dot.style.setProperty('--c', `var(--bc-${colorOf.get(key)})`);
+              const colored = key !== undefined && colorOf.has(key);
+              const dot = colored ? h('i', { class: 'builder-dot' }) : null;
+              dot?.style.setProperty('--c', `var(--bc-${colorOf.get(key!)})`);
               return h('tr', {}, h('td', {}, dot, t.label), cell(t.U, 'V'), cell(t.I, 'A'), cell(t.P, 'W'));
             }),
           ),
