@@ -14,9 +14,11 @@ const CELL = 124;
 const KEY = 'villamossagtan.epito.v1';
 const NS = 'http://www.w3.org/2000/svg';
 
-type Tool = 'wire' | 'R' | 'V' | 'I' | 'erase' | 'pan';
+type Tool = 'wire' | 'R' | 'V' | 'I' | 'flip' | 'erase' | 'pan';
 
-const TOOL_NAMES: Record<Tool, string> = { wire: 'Vezeték', R: 'Ellenállás', V: 'Feszültségforrás', I: 'Áramforrás', erase: 'Radír', pan: 'Mozgatás' };
+const TOOL_NAMES: Record<Tool, string> = { wire: 'Vezeték', R: 'Ellenállás', V: 'Feszültségforrás', I: 'Áramforrás', flip: 'Nyíl megfordítása', erase: 'Radír', pan: 'Mozgatás' };
+/** Gyorsbillentyűk az eszközökhöz (a gombokon zárójelben látszanak). */
+const TOOL_KEY: Record<Tool, string> = { wire: 'V', R: 'E', V: 'F', I: 'A', flip: 'Q', erase: 'R', pan: 'M' };
 const UNIT_OF: Record<PartKind, Unit> = { W: '', R: 'Ω', V: 'V', I: 'A' };
 const KIND_NAME: Record<PartKind, string> = { W: 'vezeték', R: 'ellenállás', V: 'feszültségforrás', I: 'áramforrás' };
 
@@ -27,6 +29,7 @@ const TOOL_ICON: Record<Tool, string> = {
   R: '<path d="M1 12H6M22 12H27"/><rect x="6" y="7" width="16" height="10" rx="1"/>',
   V: '<path d="M14 2V22"/><circle cx="14" cy="12" r="7"/>',
   I: '<path d="M14 2V5M14 19V22M7 12H21"/><circle cx="14" cy="12" r="7"/>',
+  flip: '<path d="M4 8H23M19 4L23 8L19 12M24 16H5M9 12L5 16L9 20"/>',
   erase: '<path d="M9 19L4 14L14 4L22 12L15 19ZM9 19H24M10 8L18 16"/>',
 };
 
@@ -485,8 +488,10 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
           text:
             tool === 'wire'
               ? 'Vezeték: kattints egy rácsvonalra vagy egy négyzet átlójára (a kék sáv mutatja, hová kerül), vagy húzd pontról pontra. Az értéket a számra kattintva írhatod át.'
-              : tool === 'erase'
-                ? 'Radír: kattints arra az elemre vagy vezetékre, amit törölni szeretnél.'
+              : tool === 'flip'
+                ? 'Nyíl megfordítása: kattints egy forrásra, és megfordul az iránya. Gyorsabban: állj a forrás fölé az egérrel (vagy jelöld ki), és nyomd meg a Q-t.'
+                : tool === 'erase'
+                ? 'Radír: tartsd lenyomva és húzd végig azon, amit törölni szeretnél (kattintani is lehet). Ctrl + Z visszahozza.'
                 : tool === 'pan'
                   ? 'Mozgatás: húzd a táblát bármerre. Görgővel (vagy két ujjal) nagyíthatsz és kicsinyíthetsz; a tábla végtelen.'
                 : `${TOOL_NAMES[tool]}: kattints egy rácsvonalra vagy egy négyzet átlójára (keresztbe), vagy húzd oda a gombot az eszköztárról.`,
@@ -520,10 +525,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     const flip =
       part.kind === 'R'
         ? null
-        : button('Megfordítás', () => {
-            part.dir = part.dir === 1 ? -1 : 1;
-            recompute();
-          }, 'quiet');
+        : button('Nyíl megfordítása (Q)', () => flipSource(key), 'quiet');
     // Sorszám kézzel: a név (R3, Ug1 …) száma átírható; ha már foglalt, a két elem számot cserél.
     const prefix = part.kind === 'R' ? 'R' : part.kind === 'V' ? 'Ug' : 'Ig';
     const num = h('input', { class: 'builder-input builder-num', attrs: { type: 'text', inputmode: 'numeric', value: String(part.n ?? ''), 'aria-label': 'Sorszám' } });
@@ -673,6 +675,38 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   );
   svg.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  /** A forrás irányának (nyilának) megfordítása; ellenállásnál és vezetéknél nincs mit fordítani. */
+  const flipSource = (key: EdgeKey): boolean => {
+    const part = board.parts[key];
+    if (!part || (part.kind !== 'V' && part.kind !== 'I')) return false;
+    part.dir = part.dir === 1 ? -1 : 1;
+    recompute();
+    renderEditor();
+    return true;
+  };
+  /** A mutató legutóbbi helye a rácson (a Q billentyű az alatta lévő forrást fordítja). */
+  let pointerAt: [number, number] | null = null;
+
+  // Radírozás húzva: ami a mutató közelébe kerül (az elem vonalától kb. egy ötöd rácsnyira), törlődik.
+  let erasing = false;
+  let lastErase: [number, number] | null = null;
+  const eraseAt = (pos: [number, number]): boolean => {
+    lastErase = pos;
+    let changed = false;
+    for (const key of Object.keys(board.parts)) {
+      const [a, b] = edgeEnds(key);
+      // A pont távolsága a szakasztól (rácsegységben).
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const t = Math.max(0, Math.min(1, ((pos[0] - a[0]) * dx + (pos[1] - a[1]) * dy) / (dx * dx + dy * dy)));
+      if (Math.hypot(pos[0] - (a[0] + t * dx), pos[1] - (a[1] + t * dy)) < 0.2) {
+        delete board.parts[key];
+        changed = true;
+      }
+    }
+    return changed;
+  };
+
   /** Lenyomott mutatók (két ujjnál nagyítás és mozgatás). */
   const touches = new Map<number, { x: number; y: number }>();
   let panning: { x: number; y: number; vx: number; vy: number } | null = null;
@@ -689,6 +723,11 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       wireFrom = null;
       moving = null;
       panning = null;
+      if (erasing) {
+        erasing = false;
+        lastErase = null;
+        recompute();
+      }
       const r = svg.getBoundingClientRect();
       const st = pinchState();
       pinch = { dist: st.dist, zoom: view.zoom, wx: view.x + (st.mx - r.left) / view.zoom, wy: view.y + (st.my - r.top) / view.zoom };
@@ -713,8 +752,19 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     }
     svg.setPointerCapture(e.pointerId);
     if (tool === 'erase') {
+      // Radír, mint a rajzprogramokban: lenyomva húzható, és amin áthalad, az törlődik (egy visszavonási lépés).
+      erasing = true;
       const key = hit ?? (edge && board.parts[edge] ? edge : null);
-      if (key) remove(key);
+      if (key) delete board.parts[key];
+      eraseAt(pos);
+      selected = null;
+      draw();
+      return;
+    }
+    if (tool === 'flip') {
+      // Nyíl megfordítása: a forrásra (vagy a közelébe) kattintva megfordul az iránya.
+      const key = hit ?? edge;
+      if (key) flipSource(key);
       return;
     }
     if (tool === 'R' || tool === 'V' || tool === 'I') {
@@ -735,6 +785,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   });
 
   svg.addEventListener('pointermove', (e) => {
+    pointerAt = gridPos(e);
     if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch && touches.size === 2) {
       const r = svg.getBoundingClientRect();
@@ -752,6 +803,15 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       return;
     }
     const pos = gridPos(e);
+    if (erasing) {
+      // Gyors húzásnál a két esemény között is törlünk, hogy ne maradjon ki semmi.
+      const from = lastErase ?? pos;
+      const steps = Math.max(1, Math.ceil(Math.hypot(pos[0] - from[0], pos[1] - from[1]) / 0.1));
+      let changed = false;
+      for (let i = 1; i <= steps; i++) changed = eraseAt([from[0] + ((pos[0] - from[0]) * i) / steps, from[1] + ((pos[1] - from[1]) * i) / steps]) || changed;
+      if (changed) draw();
+      return;
+    }
     if (wireFrom) {
       const node = nearestNode(pos);
       if (node && (node[0] !== wireFrom[0] || node[1] !== wireFrom[1])) {
@@ -779,7 +839,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       }
       return;
     }
-    const edge = tool === 'erase' || tool === 'pan' ? null : nearestEdge(pos);
+    const edge = tool === 'erase' || tool === 'pan' || tool === 'flip' ? null : nearestEdge(pos);
     if (edge !== hoverEdge) {
       hoverEdge = edge;
       draw();
@@ -794,6 +854,13 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     }
     if (panning) {
       panning = null;
+      return;
+    }
+    if (erasing) {
+      erasing = false;
+      lastErase = null;
+      recompute();
+      renderEditor();
       return;
     }
     if (moving) {
@@ -844,15 +911,15 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     renderEditor();
   };
   const palette = h('div', { class: 'builder-tools', attrs: { role: 'toolbar', 'aria-label': 'Eszközök' } });
-  for (const t of ['wire', 'R', 'V', 'I', 'erase', 'pan'] as Tool[]) {
+  for (const t of ['wire', 'R', 'V', 'I', 'flip', 'erase', 'pan'] as Tool[]) {
     const b = h('button', {
       class: 'builder-tool',
-      attrs: { type: 'button', 'aria-pressed': String(t === tool), title: TOOL_NAMES[t] },
-      html: `<svg width="28" height="24" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TOOL_ICON[t]}</svg><span>${TOOL_NAMES[t]}</span>`,
+      attrs: { type: 'button', 'aria-pressed': String(t === tool), title: `${TOOL_NAMES[t]} (${TOOL_KEY[t]} billentyű)`, 'aria-keyshortcuts': TOOL_KEY[t] },
+      html: `<svg width="28" height="24" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TOOL_ICON[t]}</svg><span>${TOOL_NAMES[t]}</span><kbd>(${TOOL_KEY[t]})</kbd>`,
     });
     toolBtns.set(t, b);
     b.addEventListener('click', () => setTool(t));
-    if (t !== 'erase' && t !== 'pan') {
+    if (t !== 'erase' && t !== 'pan' && t !== 'flip') {
       const kind: PartKind = t === 'wire' ? 'W' : t;
       // Húzás az eszköztárról: a gomb képe követi a mutatót, a rácson a legközelebbi vonalra kerül.
       let ghost: HTMLElement | null = null;
@@ -941,7 +1008,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   syncHistory();
   const guide = h('p', {
     class: 'builder-guide',
-    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Ctrl + Shift + Z: újra · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése · elemre kattintva alul átírható a sorszáma (R1, R2 …) és az értéke',
+    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Ctrl + Shift + Z: újra · eszközök: a gombokon zárójelben álló betű (V, E, F, A, Q, R, M) · Q: a forrás nyilának megfordítása (a kijelölt forrásé, vagy amelyik fölött az egér áll) · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése · elemre kattintva alul átírható a sorszáma (R1, R2 …) és az értéke',
   });
 
   const root = h(
@@ -977,6 +1044,22 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       e.preventDefault();
       remove(selected);
     } else if (e.key === 'Escape') setTool('wire');
+    else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Eszközváltás gyorsbillentyűvel: V vezeték, E ellenállás, F feszültségforrás, A áramforrás, R radír, M mozgatás.
+      const t = (Object.keys(TOOL_KEY) as Tool[]).find((k) => TOOL_KEY[k] === e.key.toUpperCase());
+      // Q: a kijelölt forrás (vagy amelyik fölött a mutató áll) nyila azonnal megfordul; ha nincs ilyen, a
+      // „Nyíl megfordítása” eszköz kapcsol be, és azzal kattintva lehet fordítani.
+      if (t === 'flip') {
+        e.preventDefault();
+        const under = pointerAt ? nearestEdge(pointerAt) : null;
+        if (!(selected && flipSource(selected)) && !(under && flipSource(under))) setTool('flip');
+        return;
+      }
+      if (t) {
+        e.preventDefault();
+        setTool(t);
+      }
+    }
   };
   document.addEventListener('keydown', onKey);
 
