@@ -40,8 +40,11 @@ const ICONS: Record<string, string> = {
   ohm: icon(`<path d="M-22 4H22M-9 -11H9M5 -15L9 -11L5 -7"/>${res(-11, -2, 22, 12)}`),
   // Két párhuzamos ellenállás: összevonás eredővé.
   eredo: icon(`<path d="M-22 0H-14M14 0H22M-14 -9V9M14 -9V9M-14 -9H14M-14 9H14"/>${res(-8, -14, 16, 10)}${res(-8, 4, 16, 10)}`),
-  // Két soros ellenállás, középen megcsapolva: osztó.
-  oszto: icon(`<path d="M-8 -15V15M-8 0H12"/>${res(-13, -12, 10, 9)}${res(-13, 3, 10, 9)}<circle cx="15" cy="0" r="3" class="wheel-icon-fill"/>`),
+  // Feszültségosztó a szokásos kapcsolási rajzzal: soros ellenállás, utána egy a közös sínre, köztük a kimenet.
+  oszto: icon(
+    `<path d="M-19 -8H19M8 -8V14M-19 14H19"/>${res(-13, -13, 13, 10)}${res(3, -3, 10, 12)}<circle cx="8" cy="-8" r="2.6" class="wheel-icon-dot"/>` +
+      `<circle cx="-20" cy="-8" r="2.8" class="wheel-icon-fill"/><circle cx="20" cy="-8" r="2.8" class="wheel-icon-fill"/>`,
+  ),
   // Csomópont: egy áram befolyik, kettő kifolyik.
   kirchhoff: icon(
     `<path d="M-22 0H-4M-11 -4L-6 0L-11 4M0 0L18 -12M0 0L18 12M10 -12H18V-5M10 12H18V5"/><circle cx="0" cy="0" r="4" class="wheel-icon-dot"/>`,
@@ -72,7 +75,7 @@ const SHORT: Record<string, [string, string]> = {
   kirchhoff: ['ΣI', 'Kirchhoff'],
   halozat: ['U·I·P', 'Analízis'],
   'valodi-gen': ['Rb', 'Generátor'],
-  thevenin: ['A–B', 'Helyettesítő\ngenerátor'],
+  thevenin: ['A–B', 'Helyettesítő\ngenerátorok'],
   tobbforras: ['', 'Több forrás'],
   tanari: ['ZH', 'Tanári'],
   'csillag-delta': ['Y–Δ', 'Csillag-delta'],

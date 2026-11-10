@@ -42,7 +42,7 @@ export const TOPIC_NAMES: Record<Topic, string> = {
   oszto: 'Feszültség- és áramosztás',
   halozat: 'Teljes hálózatanalízis',
   'valodi-gen': 'Valódi generátor terhelése',
-  thevenin: 'Helyettesítő generátor (Thevenin, Norton)',
+  thevenin: 'Helyettesítő generátorok (Thevenin, Norton)',
   tobbforras: 'Többforrásos hálózatok',
   tanari: 'A tanár úr feladattípusai',
   'csillag-delta': 'Csillag-delta',

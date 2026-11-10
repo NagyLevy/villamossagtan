@@ -139,7 +139,7 @@ export function dailyChallenge(date: Date, lvl: DailyLevel, domain: Domain = 'dc
     { id: 'hurokaram', title: 'Hurokáram', topic: 'tobbforras', method: 'hurokaram', basic: false, tip: TIPS.hurokaram! },
     { id: 'csomoponti', title: 'Csomóponti potenciál', topic: 'tobbforras', method: 'csomoponti', basic: false, tip: TIPS.csomoponti! },
     { id: 'szuperpozicio', title: 'Szuperpozíció', topic: 'tobbforras', method: 'szuperpozicio', basic: false, tip: TIPS.szuperpozicio! },
-    { id: 'thevenin', title: 'Helyettesítő generátor', topic: 'thevenin', method: 'thevenin', basic: true, tip: TIPS.thevenin! },
+    { id: 'thevenin', title: 'Helyettesítő generátorok', topic: 'thevenin', method: 'thevenin', basic: true, tip: TIPS.thevenin! },
     { id: 'csillag-delta', title: 'Csillag-delta', topic: 'csillag-delta', method: 'csillag-delta', basic: true, tip: TIPS.csillagdelta! },
   ];
   const tasks: DailyTask[] = mixed.map((m, i) => {
