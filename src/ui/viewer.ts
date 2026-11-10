@@ -291,12 +291,14 @@ export class TaskViewer {
     this.loadPlayer();
   }
 
-  private reveal(n: number): void {
+  /** Lépések felfedése. A tipp az új lépésre ugrik; a teljes megoldás az elejéről indul és lejátssza. */
+  private reveal(n: number, fromStart = false): void {
     const total = this.solution?.steps.length ?? 0;
     this.revealed = Math.min(n, total);
     if (this.revealed >= total) this.showAll = true;
     this.renderPanel();
-    this.loadPlayer(true);
+    this.loadPlayer(!fromStart);
+    if (fromStart && this.revealed) this.player.restart();
   }
 
   private loadPlayer(toLast = false): void {
@@ -398,7 +400,7 @@ export class TaskViewer {
       );
     if (this.revealed >= total) return extras.length ? h('div', { class: 'hint-actions' }, ...extras) : null;
     const tip = button(this.revealed === 0 ? 'Tipp: első lépés' : 'Következő lépés', () => this.reveal(this.revealed + 1), 'secondary');
-    const all = button('Teljes megoldás', () => this.reveal(total), 'primary');
+    const all = button('Teljes megoldás', () => this.reveal(total, true), 'primary');
     const trick = t.dc
       ? button(
           'Trükk-tipp',
