@@ -575,8 +575,17 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     }
   };
 
+  /** Üzenet, ha a vonal már foglalt: nem cserélünk le alkatrészt, előbb törölni kell. */
+  const OCCUPIED = 'Ott már van alkatrész. Ha másikat tennél a helyére, előbb töröld: állj fölé az egérrel, és nyomd meg az R-t.';
+
   const place = (key: EdgeKey, kind: PartKind) => {
     const old = board.parts[key];
+    // Meglévő alkatrészt (ellenállást, forrást) nem cserélünk le másra; a vezeték helyére tehető alkatrész.
+    if (old && old.kind !== 'W' && old.kind !== kind) {
+      toast(OCCUPIED);
+      select(key);
+      return;
+    }
     // Ugyanolyan elemre ejtve megmarad az érték; különben az alapérték jön.
     if (!(old && old.kind === kind)) {
       // Új elem: a fajtájából a következő sorszámot kapja (a régi elem helyére téve előbb az kikerül).
@@ -877,7 +886,11 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       if (!m.moved) select(m.key === selected ? null : m.key);
       else {
         const edge = nearestEdge(gridPos(e));
-        if (edge && edge !== m.key && inside(e)) {
+        if (edge && edge !== m.key && inside(e) && board.parts[edge] && board.parts[edge]!.kind !== 'W') {
+          // Foglalt helyre nem húzható át: a meglévő alkatrész megmarad.
+          toast(OCCUPIED);
+          draw();
+        } else if (edge && edge !== m.key && inside(e)) {
           board.parts[edge] = board.parts[m.key]!;
           delete board.parts[m.key];
           clearCrossing(edge);

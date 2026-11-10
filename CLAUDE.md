@@ -170,7 +170,8 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   áthelyezéskor megmarad, az új elem a legkisebb szabad számot kapja (nem az értékből és nem a helyből jön). A sorszám az
   alsó sávban kézzel is átírható (`renumber`); foglalt számnál a két elem számot cserél. Eszközök gyorsbillentyűi (a gombokon
   zárójelben): V vezeték, E ellenállás, F feszültségforrás, A áramforrás, M mozgatás. Ha a betű lenyomásakor az egér egy
-  rácsvonal fölött áll, az elem kattintás nélkül oda is kerül. Két **művelet** nem eszköz
+  rácsvonal fölött áll, az elem kattintás nélkül oda is kerül. Meglévő alkatrészt (ellenállást, forrást) semmilyen
+  letevés vagy áthúzás nem cserél le: üzenet jön, hogy előbb törölni kell (R); vezeték helyére tehető alkatrész. Két **művelet** nem eszköz
   (nem marad bekapcsolva; az eszköztár végén, elválasztó után állnak): **Q** = nyíl megfordítása (az egér alatti,
   vagy a kijelölt forrásé), **R** = radír (törli az egér alatti vagy a kijelölt elemet; nyomva tartva és az egeret
   húzva mindent, amin áthalad, egy visszavonási lépésben). A gombjuk a kijelölt elemre hat. Az az elem, amelyik fölött az egér
