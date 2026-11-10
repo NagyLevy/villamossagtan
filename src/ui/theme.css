@@ -1582,3 +1582,29 @@ h2.daily-title {
     display: none;
   }
 }
+
+/* Építő: rámutatásra kiemelt elem (kattintás nélkül), és a nem választható, szürke emlékeztető gomb. */
+.bp.is-hover:not(.is-selected) .bp-hit {
+  stroke: color-mix(in srgb, var(--accent) 14%, transparent);
+  stroke-linecap: round;
+}
+
+.bp.is-hover:not(.is-selected) {
+  color: var(--c, var(--accent));
+}
+
+.bp.is-hover:not(.is-selected) .bp-label {
+  fill: var(--c, var(--accent));
+}
+
+.builder-tool.is-hint {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--hair);
+  color: var(--ink-2);
+  opacity: 0.6;
+  cursor: default;
+}
+
+.builder-tool.is-hint:hover {
+  box-shadow: inset 0 0 0 1px var(--hair);
+}

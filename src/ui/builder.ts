@@ -75,6 +75,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   let tool: Tool = 'wire';
   let selected: EdgeKey | null = null;
   let hoverEdge: EdgeKey | null = null;
+  let hoverPart: EdgeKey | null = null;
   let names = new Map<EdgeKey, string>();
   let dangling = new Set<EdgeKey>();
   /**
@@ -188,7 +189,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   const partSvg = (key: EdgeKey, part: Part, place: Placement): SVGGElement => {
     const geo = geometry(key);
     const { x1, y1, x2, y2, cx, cy, angle } = geo;
-    const cls = ['bp', `bp-${part.kind}`, key === selected ? 'is-selected' : '', dangling.has(key) ? 'is-dangling' : ''].filter(Boolean).join(' ');
+    const cls = ['bp', `bp-${part.kind}`, key === selected ? 'is-selected' : '', key === hoverPart ? 'is-hover' : '', dangling.has(key) ? 'is-dangling' : ''].filter(Boolean).join(' ');
     const g = svgEl('g', { class: cls });
     g.dataset.key = key;
     if (colorOf.has(key)) g.style.setProperty('--c', `var(--bc-${colorOf.get(key)})`);
@@ -488,9 +489,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
           text:
             tool === 'wire'
               ? 'Vezeték: kattints egy rácsvonalra vagy egy négyzet átlójára (a kék sáv mutatja, hová kerül), vagy húzd pontról pontra. Az értéket a számra kattintva írhatod át.'
-              : tool === 'flip'
-                ? 'Nyíl megfordítása: kattints egy forrásra, és megfordul az iránya. Gyorsabban: állj a forrás fölé az egérrel (vagy jelöld ki), és nyomd meg a Q-t.'
-                : tool === 'erase'
+              : tool === 'erase'
                 ? 'Radír: tartsd lenyomva és húzd végig azon, amit törölni szeretnél (kattintani is lehet). Ctrl + Z visszahozza.'
                 : tool === 'pan'
                   ? 'Mozgatás: húzd a táblát bármerre. Görgővel (vagy két ujjal) nagyíthatsz és kicsinyíthetsz; a tábla végtelen.'
@@ -686,6 +685,12 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   };
   /** A mutató legutóbbi helye a rácson (a Q billentyű az alatta lévő forrást fordítja). */
   let pointerAt: [number, number] | null = null;
+  /** Az elem, amelyik fölött a mutató áll: kiemelve látszik. Csak az osztályt cseréljük, nem rajzolunk újra. */
+  const setHoverPart = (key: EdgeKey | null) => {
+    if (key === hoverPart) return;
+    hoverPart = key;
+    for (const el of svg.querySelectorAll<SVGGElement>('.bp')) el.classList.toggle('is-hover', el.dataset.key === key);
+  };
 
   // Radírozás húzva: ami a mutató közelébe kerül (az elem vonalától kb. egy ötöd rácsnyira), törlődik.
   let erasing = false;
@@ -761,12 +766,6 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       draw();
       return;
     }
-    if (tool === 'flip') {
-      // Nyíl megfordítása: a forrásra (vagy a közelébe) kattintva megfordul az iránya.
-      const key = hit ?? edge;
-      if (key) flipSource(key);
-      return;
-    }
     if (tool === 'R' || tool === 'V' || tool === 'I') {
       if (edge) place(edge, tool);
       return;
@@ -786,6 +785,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
 
   svg.addEventListener('pointermove', (e) => {
     pointerAt = gridPos(e);
+    // Kiemelés rámutatásra (kattintás nélkül): az az elem vagy vezeték, amelyik fölött a mutató áll.
+    setHoverPart(wireFrom || moving || panning || erasing || pinch ? null : ((e.target as Element).closest<SVGGElement>('.bp')?.dataset.key ?? null));
     if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch && touches.size === 2) {
       const r = svg.getBoundingClientRect();
@@ -892,6 +893,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
   svg.addEventListener('pointerleave', () => {
+    setHoverPart(null);
     if (hoverEdge && !moving) {
       hoverEdge = null;
       draw();
@@ -911,6 +913,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     renderEditor();
   };
   const palette = h('div', { class: 'builder-tools', attrs: { role: 'toolbar', 'aria-label': 'Eszközök' } });
+  let flipHint: HTMLElement | null = null;
   for (const t of ['wire', 'R', 'V', 'I', 'flip', 'erase', 'pan'] as Tool[]) {
     const b = h('button', {
       class: 'builder-tool',
@@ -918,8 +921,18 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       html: `<svg width="28" height="24" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TOOL_ICON[t]}</svg><span>${TOOL_NAMES[t]}</span><kbd>(${TOOL_KEY[t]})</kbd>`,
     });
     toolBtns.set(t, b);
+    if (t === 'flip') {
+      // Nem eszköz, csak emlékeztető: a nyilat a Q billentyű fordítja meg (a forrás fölött állva vagy kijelölve).
+      b.classList.add('is-hint');
+      b.setAttribute('aria-disabled', 'true');
+      b.removeAttribute('aria-pressed');
+      b.title = 'Állj az egérrel egy forrás fölé (vagy jelöld ki), és nyomd meg a Q-t: megfordul a nyila.';
+      toolBtns.delete(t);
+      flipHint = b;
+      continue;
+    }
     b.addEventListener('click', () => setTool(t));
-    if (t !== 'erase' && t !== 'pan' && t !== 'flip') {
+    if (t !== 'erase' && t !== 'pan') {
       const kind: PartKind = t === 'wire' ? 'W' : t;
       // Húzás az eszköztárról: a gomb képe követi a mutatót, a rácson a legközelebbi vonalra kerül.
       let ghost: HTMLElement | null = null;
@@ -959,6 +972,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     }
     palette.append(b);
   }
+  // A szürke emlékeztető a sor végére kerül, az eszközök után.
+  if (flipHint) palette.append(flipHint);
 
   const colorToggle = toggle('Színkód', colorCode, (v) => {
     colorCode = v;
@@ -1008,7 +1023,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   syncHistory();
   const guide = h('p', {
     class: 'builder-guide',
-    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Ctrl + Shift + Z: újra · eszközök: a gombokon zárójelben álló betű (V, E, F, A, Q, R, M) · Q: a forrás nyilának megfordítása (a kijelölt forrásé, vagy amelyik fölött az egér áll) · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése · elemre kattintva alul átírható a sorszáma (R1, R2 …) és az értéke',
+    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Ctrl + Shift + Z: újra · eszközök: a gombokon zárójelben álló betű (V, E, F, A, R, M) · Q: megfordítja annak a forrásnak a nyilát, amelyik fölött az egér áll (vagy a kijelöltét) · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése · elemre kattintva alul átírható a sorszáma (R1, R2 …) és az értéke',
   });
 
   const root = h(
@@ -1047,12 +1062,12 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
       // Eszközváltás gyorsbillentyűvel: V vezeték, E ellenállás, F feszültségforrás, A áramforrás, R radír, M mozgatás.
       const t = (Object.keys(TOOL_KEY) as Tool[]).find((k) => TOOL_KEY[k] === e.key.toUpperCase());
-      // Q: a kijelölt forrás (vagy amelyik fölött a mutató áll) nyila azonnal megfordul; ha nincs ilyen, a
-      // „Nyíl megfordítása” eszköz kapcsol be, és azzal kattintva lehet fordítani.
+      // Q: annak a forrásnak a nyila fordul meg, amelyik fölött a mutató áll (ha nincs ilyen, a kijelöltté).
+      // Eszközt nem vált.
       if (t === 'flip') {
         e.preventDefault();
-        const under = pointerAt ? nearestEdge(pointerAt) : null;
-        if (!(selected && flipSource(selected)) && !(under && flipSource(under))) setTool('flip');
+        const under = hoverPart ?? (pointerAt ? nearestEdge(pointerAt) : null);
+        if (!(under && flipSource(under)) && selected) flipSource(selected);
         return;
       }
       if (t) {
