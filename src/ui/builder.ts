@@ -575,8 +575,17 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     }
   };
 
+  /** Üzenet, ha a vonal már foglalt: nem cserélünk le alkatrészt, előbb törölni kell. */
+  const OCCUPIED = 'Ott már van alkatrész. Ha másikat tennél a helyére, előbb töröld: állj fölé az egérrel, és nyomd meg az R-t.';
+
   const place = (key: EdgeKey, kind: PartKind) => {
     const old = board.parts[key];
+    // Meglévő alkatrészt (ellenállást, forrást) nem cserélünk le másra; a vezeték helyére tehető alkatrész.
+    if (old && old.kind !== 'W' && old.kind !== kind) {
+      toast(OCCUPIED);
+      select(key);
+      return;
+    }
     // Ugyanolyan elemre ejtve megmarad az érték; különben az alapérték jön.
     if (!(old && old.kind === kind)) {
       // Új elem: a fajtájából a következő sorszámot kapja (a régi elem helyére téve előbb az kikerül).
@@ -685,6 +694,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   };
   /** A mutató legutóbbi helye a rácson (a Q billentyű az alatta lévő forrást fordítja). */
   let pointerAt: [number, number] | null = null;
+  /** Az egér a tábla fölött van-e (csak akkor tesz le elemet a gyorsbillentyű). */
+  let pointerInside = false;
   /** Az elem, amelyik fölött a mutató áll: kiemelve látszik. Csak az osztályt cseréljük, nem rajzolunk újra. */
   const setHoverPart = (key: EdgeKey | null) => {
     if (key === hoverPart) return;
@@ -788,6 +799,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
 
   svg.addEventListener('pointermove', (e) => {
     pointerAt = gridPos(e);
+    pointerInside = true;
     // Kiemelés rámutatásra (kattintás nélkül): az az elem vagy vezeték, amelyik fölött a mutató áll.
     setHoverPart(wireFrom || moving || panning || erasing || pinch ? null : ((e.target as Element).closest<SVGGElement>('.bp')?.dataset.key ?? null));
     if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -874,7 +886,11 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       if (!m.moved) select(m.key === selected ? null : m.key);
       else {
         const edge = nearestEdge(gridPos(e));
-        if (edge && edge !== m.key && inside(e)) {
+        if (edge && edge !== m.key && inside(e) && board.parts[edge] && board.parts[edge]!.kind !== 'W') {
+          // Foglalt helyre nem húzható át: a meglévő alkatrész megmarad.
+          toast(OCCUPIED);
+          draw();
+        } else if (edge && edge !== m.key && inside(e)) {
           board.parts[edge] = board.parts[m.key]!;
           delete board.parts[m.key];
           clearCrossing(edge);
@@ -896,6 +912,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
   svg.addEventListener('pointerleave', () => {
+    pointerInside = false;
     setHoverPart(null);
     if (hoverEdge && !moving) {
       hoverEdge = null;
@@ -1044,7 +1061,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   syncHistory();
   const guide = h('p', {
     class: 'builder-guide',
-    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Ctrl + Shift + Z: újra · eszközök: a gombokon zárójelben álló betű (V, E, F, A, M) · Q: megfordítja annak a forrásnak a nyilát, amelyik fölött az egér áll (vagy a kijelöltét) · R: törli az elemet, amelyik fölött az egér áll (nyomva tartva és az egeret húzva mindent, amin áthalad) · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése · elemre kattintva alul átírható a sorszáma (R1, R2 …) és az értéke',
+    text: 'Ctrl + Z (Macen ⌘ + Z): visszavonás · Ctrl + Shift + Z: újra · eszközök: a gombokon zárójelben álló betű (V, E, F, A, M); ha közben az egér egy rácsvonal fölött áll, az elem kattintás nélkül oda is kerül · Q: megfordítja annak a forrásnak a nyilát, amelyik fölött az egér áll (vagy a kijelöltét) · R: törli az elemet, amelyik fölött az egér áll (nyomva tartva és az egeret húzva mindent, amin áthalad) · Shift + húzás vagy jobb egérgomb: a tábla mozgatása · görgő: nagyítás · Delete: a kijelölt elem törlése · elemre kattintva alul átírható a sorszáma (R1, R2 …) és az értéke',
   });
 
   const root = h(
@@ -1110,6 +1127,10 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       if (t) {
         e.preventDefault();
         setTool(t);
+        // Ha az egér épp egy rácsvonal (szakasz) fölött áll, az elem kattintás nélkül oda is kerül.
+        const kind: PartKind | null = t === 'wire' ? 'W' : t === 'R' || t === 'V' || t === 'I' ? t : null;
+        const edge = pointerInside && pointerAt ? nearestEdge(pointerAt) : null;
+        if (kind && edge) place(edge, kind);
       }
     }
   };
