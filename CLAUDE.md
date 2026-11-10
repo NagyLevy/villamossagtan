@@ -157,7 +157,7 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   és a tanári 1. ZH – közös készletéből; minden feladat fölött ott az előírt módszer, `prescribedMethod`,
   `fit.ts`), Váltóáram (10), Vegyes (7). Külön „tanári formátum” nincs a választóban (az `examTasks('zh1')`
   sor a tesztek miatt megmaradt). Beadás után összesítés és feladatonkénti megoldás. Pontrendszer, ranglista nincs.
-- **Építő:** saját áramkör rácson (`src/builder/model.ts` a modell, `src/ui/builder.ts` a felület): az elemek
+- **Áramkör-építő** (a fülek között elválasztó vonal után, „Béta” jelvénnyel): saját áramkör rácson (`src/builder/model.ts` a modell, `src/ui/builder.ts` a felület): az elemek
   (ellenállás, feszültség- és áramforrás) az eszköztárról a rácsvonalakra húzhatók, a vezeték pontról pontra húzva
   rajzolható, vagy üres rácsvonalra kattintva kerül oda; minden elem és vezeték átlósan (egy négyzet átlójára,
   45°) is tehető, egy négyzetben csak az egyik átló lehet foglalt; elemre kattintva érték, megfordítás, törlés, az

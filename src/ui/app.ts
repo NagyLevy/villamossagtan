@@ -29,7 +29,7 @@ import { formatNumber } from '../units';
 export const AC_ENABLED = false;
 const SOON = 'Hamarosan';
 
-const MODE_NAMES: Record<Mode, string> = { gyakorlas: 'Gyakorlás', idore: 'Időre', vizsga: 'Próbavizsga', napi: 'Napi', epito: 'Építő' };
+const MODE_NAMES: Record<Mode, string> = { gyakorlas: 'Gyakorlás', idore: 'Időre', vizsga: 'Próbavizsga', napi: 'Napi', epito: 'Áramkör-építő' };
 
 export function startApp(root: HTMLElement): void {
   const settings = loadSettings();
