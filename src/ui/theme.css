@@ -1399,7 +1399,7 @@ h2.daily-title {
   border-color: var(--danger);
 }
 
-/* Építő: színkód. Csak az a forrás kap színt, amelyiknek a felirata távolabb került (a rajzon, a feliratán és a táblázatban). */
+/* Építő: színkód (kapcsolható). Bekapcsolva minden adattal bíró elem saját színt kap (rajz, felirat, táblázat). */
 :root {
   --bc-0: #1f5bff;
   --bc-1: #c2410c;
@@ -1477,4 +1477,14 @@ h2.daily-title {
   margin-right: 8px;
   border-radius: 50%;
   background: var(--c, var(--ink-2));
+}
+
+.builder-actions {
+  align-items: center;
+}
+
+.builder-actions .switch-row {
+  margin-right: 6px;
+  font-size: 13.5px;
+  font-weight: 550;
 }

@@ -6,7 +6,7 @@ import { buildProblem, crossingKey, DEFAULT_VALUE, edgeEnds, edgeKey, exampleBoa
 import { tableTargets } from '../methods/check';
 import { dcTask } from '../tasks';
 import { formatQuantity, type Unit } from '../units';
-import { button } from './components';
+import { button, toggle } from './components';
 import { h } from './dom';
 import type { TaskViewer } from './viewer';
 
@@ -75,10 +75,17 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
   let names = new Map<EdgeKey, string>();
   let dangling = new Set<EdgeKey>();
   /**
-   * Színkód: csak annak a forrásnak jár, amelyiknek a felirata nem fért el közvetlenül mellette (távolabb vagy
-   * más oldalra került): ott a szín mutatja, melyik szám melyik forrásé. A többi elem tintaszínű marad.
+   * Színkód (kapcsolható, alapból ki): bekapcsolva minden adattal bíró elem (ellenállás, forrás) saját színt kap,
+   * és a felirata meg a táblázat sora is ilyen színű, így sűrű rajzon is látszik, melyik szám melyik elemé.
    */
   const COLORS = 10;
+  const COLOR_KEY = 'villamossagtan.epito.szinkod';
+  let colorCode = false;
+  try {
+    colorCode = localStorage.getItem(COLOR_KEY) === '1';
+  } catch {
+    // Tároló nélkül kikapcsolva marad.
+  }
   let colorOf = new Map<EdgeKey, number>();
 
   const W = board.cols * CELL + PAD * 2;
@@ -127,7 +134,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     const w = Math.max(...lines.map((t) => t.length)) * 8.4 + 4;
     const hgt = lines.length * 16 + 2;
     const near = (part.kind === 'R' ? 13 : 19) + 5;
-    const dist = (near + [0, 20, 38][spot.far]!) * (ux !== 0 && uy !== 0 ? 0.8 : 1);
+    const dist = (near + [0, 20, 38][spot.far]!) * (ux !== 0 && uy !== 0 ? 0.92 : 1);
     const x = g.cx + Math.sign(ux) * dist;
     const y = g.cy + Math.sign(uy) * dist;
     const anchor = ux > 0.3 ? 'start' : ux < -0.3 ? 'end' : 'middle';
@@ -204,40 +211,57 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     const costOf = (b: Box) => {
       const pad: Box = { x1: b.x1 - 3, y1: b.y1 - 3, x2: b.x2 + 3, y2: b.y2 + 3 };
       let c = 0;
-      for (const o of ink) c += overlap(pad, o);
+      for (const o of ink) c += overlap(pad, o) * 2;
       for (const o of taken) c += overlap(pad, o) * 3;
       if (b.x1 < 2 || b.y1 < 2 || b.x2 > W - 2 || b.y2 > H - 2) c += 1e6;
       return c;
     };
     const out = new Map<EdgeKey, { spot: Spot; arrow: 1 | -1; moved: boolean }>();
-    // Előbb a forrásnyilak (csak két helyük lehet), utána a feliratok.
-    for (const [key, part] of entries) {
-      if (part.kind !== 'V' && part.kind !== 'I') continue;
-      const g = geos.get(key)!;
-      const arrow: 1 | -1 = costOf(arrowBox(g, 1)) <= costOf(arrowBox(g, -1)) ? 1 : -1;
-      out.set(key, { spot: SPOTS[0]!, arrow, moved: false });
-      taken.push(arrowBox(g, arrow));
-    }
-    for (const [key, part] of entries) {
-      if (part.kind === 'W') continue;
-      const g = geos.get(key)!;
+    /** A legjobb felirathely az adott (már foglalt) helyek mellett. */
+    const bestSpot = (key: EdgeKey, part: Part, g: Geo) => {
       // A szokásos hely az elem „fölött” (vízszintesnél fölötte, függőlegesnél jobbra); a többi csak ha ott takarna.
       const home = g.angle === 0 ? 270 : g.angle === 90 ? 0 : g.angle === 45 ? 315 : 225;
       let best: Spot = SPOTS[0]!;
       let bestCost = Infinity;
       for (const spot of SPOTS) {
         const turn = Math.min(Math.abs(spot.dir - home), 360 - Math.abs(spot.dir - home));
-        // Az elem két oldala (a tengelyére merőlegesen) a természetes hely; a sarkok csak végszükségben.
-        const bias = (turn === 0 ? 0 : turn === 180 ? 1 : 3 + turn / 45) + spot.far * 1.2;
+        // A felirat maradjon az elem közelében: előbb a két oldala, aztán a sarkai (ugyanolyan közel), és csak
+        // végső esetben távolabb. A távolság többet számít, mint az, hogy melyik oldalra kerül.
+        const bias = (turn === 0 ? 0 : turn === 180 ? 0.5 : 1 + turn / 90) + spot.far * 25;
         const c = costOf(labelBox(g, part, labelLines(key, part, spot), spot).box) + bias;
         if (c < bestCost) {
           bestCost = c;
           best = spot;
         }
       }
-      // Elmozdult: nem a szokásos, közvetlenül az elem melletti helyre került.
-      out.set(key, { spot: best, arrow: out.get(key)?.arrow ?? 1, moved: best.dir !== home || best.far > 0 });
-      taken.push(labelBox(g, part, labelLines(key, part, best), best).box);
+      return { spot: best, cost: bestCost, moved: best.dir !== home || best.far > 0 };
+    };
+    // Előbb a források: a nyíl két oldala közül az nyer, amelyik mellett a felirat is közel marad a forráshoz
+    // (a nyíl és a felirat helyét együtt választjuk). Utána az ellenállások feliratai.
+    const order = [...entries.filter(([, p]) => p.kind === 'V' || p.kind === 'I'), ...entries.filter(([, p]) => p.kind === 'R')];
+    for (const [key, part] of order) {
+      const g = geos.get(key)!;
+      if (part.kind === 'R') {
+        const b = bestSpot(key, part, g);
+        out.set(key, { spot: b.spot, arrow: 1, moved: b.moved });
+        taken.push(labelBox(g, part, labelLines(key, part, b.spot), b.spot).box);
+        continue;
+      }
+      let pick: { arrow: 1 | -1; spot: Spot; moved: boolean } | null = null;
+      let pickCost = Infinity;
+      for (const arrow of [1, -1] as const) {
+        const ab = arrowBox(g, arrow);
+        const arrowCost = costOf(ab);
+        taken.push(ab);
+        const b = bestSpot(key, part, g);
+        taken.pop();
+        if (arrowCost + b.cost < pickCost) {
+          pickCost = arrowCost + b.cost;
+          pick = { arrow, spot: b.spot, moved: b.moved };
+        }
+      }
+      out.set(key, pick!);
+      taken.push(arrowBox(g, pick!.arrow), labelBox(g, part, labelLines(key, part, pick!.spot), pick!.spot).box);
     }
     return out;
   };
@@ -257,11 +281,13 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       kids.push(svgEl('line', { x1, y1, x2, y2, class: 'bg-hover' }));
     }
     const places = layoutLabels();
-    const movedSources = Object.entries(board.parts)
-      .filter(([k, p]) => (p.kind === 'V' || p.kind === 'I') && places.get(k)?.moved)
-      .map(([k]) => k)
-      .sort((a, b) => (names.get(a) ?? a).localeCompare(names.get(b) ?? b, 'hu', { numeric: true }));
-    colorOf = new Map(movedSources.map((k, i) => [k, i % COLORS]));
+    const coded = colorCode
+      ? Object.entries(board.parts)
+          .filter(([, p]) => p.kind !== 'W')
+          .map(([k]) => k)
+          .sort((x, y) => (names.get(x) ?? x).localeCompare(names.get(y) ?? y, 'hu', { numeric: true }))
+      : [];
+    colorOf = new Map(coded.map((k, i) => [k, i % COLORS]));
     // Előbb a vezetékek, utána az elemek: a feliratok így mindig felül vannak.
     const sorted = Object.entries(board.parts).sort(([, p], [, q]) => Number(p.kind !== 'W') - Number(q.kind !== 'W'));
     for (const [key, part] of sorted) kids.push(partSvg(key, part, places.get(key) ?? { spot: SPOTS[0]!, arrow: 1, moved: false }));
@@ -677,9 +703,20 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     palette.append(b);
   }
 
+  const colorToggle = toggle('Színkód', colorCode, (v) => {
+    colorCode = v;
+    try {
+      localStorage.setItem(COLOR_KEY, v ? '1' : '0');
+    } catch {
+      // A mentés nem kötelező.
+    }
+    recompute();
+  });
+  colorToggle.el.title = 'Minden elem és a hozzá tartozó szám saját színt kap.';
   const actions = h(
     'div',
     { class: 'builder-actions' },
+    colorToggle.el,
     button('Példa', () => {
       board.parts = exampleBoard().parts;
       selected = null;
