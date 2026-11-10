@@ -1364,3 +1364,37 @@ h2.daily-title {
 .bp-label-value {
   font-weight: 450;
 }
+
+/* Építő: az érték a rajzon, a számra kattintva írható át. */
+.builder-canvas {
+  position: relative;
+}
+
+.bp-label {
+  pointer-events: auto;
+  cursor: text;
+}
+
+.bp-label:hover {
+  fill: var(--accent);
+}
+
+.builder-inline {
+  position: absolute;
+  z-index: 3;
+  height: 34px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  border: 2px solid var(--accent);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 550;
+  text-align: center;
+  box-shadow: var(--shadow-float);
+  outline: none;
+}
+
+.builder-inline.is-bad {
+  border-color: var(--danger);
+}

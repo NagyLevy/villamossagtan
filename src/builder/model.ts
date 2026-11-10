@@ -21,7 +21,11 @@ export interface Part {
   dir: 1 | -1;
 }
 
-/** Él kulcsa: "h:x:y" az (x, y) → (x+1, y), "v:x:y" az (x, y) → (x, y+1) szakasz. */
+/**
+ * Él kulcsa: "h:x:y" az (x, y) → (x+1, y), "v:x:y" az (x, y) → (x, y+1) szakasz; átlósan (45°) "d:x:y" az
+ * (x, y) → (x+1, y+1), "u:x:y" az (x, y+1) → (x+1, y) szakasz (mindkettő az (x, y) sarkú cellában).
+ * Az első végpont mindig a bal oldali (függőlegesnél a felső), ahogy a rajzoló várja.
+ */
 export type EdgeKey = string;
 
 export interface Board {
@@ -36,14 +40,25 @@ export function edgeEnds(key: EdgeKey): [[number, number], [number, number]] {
   const [o, xs, ys] = key.split(':');
   const x = Number(xs);
   const y = Number(ys);
-  return o === 'h' ? [[x, y], [x + 1, y]] : [[x, y], [x, y + 1]];
+  if (o === 'h') return [[x, y], [x + 1, y]];
+  if (o === 'v') return [[x, y], [x, y + 1]];
+  if (o === 'd') return [[x, y], [x + 1, y + 1]];
+  return [[x, y + 1], [x + 1, y]];
 }
 
 export function edgeKey(a: [number, number], b: [number, number]): EdgeKey | null {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  if (Math.abs(dx) + Math.abs(dy) !== 1) return null;
-  return dy === 0 ? `h:${Math.min(a[0], b[0])}:${a[1]}` : `v:${a[0]}:${Math.min(a[1], b[1])}`;
+  const dx = Math.abs(b[0] - a[0]);
+  const dy = Math.abs(b[1] - a[1]);
+  if (dx + dy === 1) return dy === 0 ? `h:${Math.min(a[0], b[0])}:${a[1]}` : `v:${a[0]}:${Math.min(a[1], b[1])}`;
+  if (dx !== 1 || dy !== 1) return null;
+  const [left, right] = a[0] < b[0] ? [a, b] : [b, a];
+  return left[1] < right[1] ? `d:${left[0]}:${left[1]}` : `u:${left[0]}:${right[1]}`;
+}
+
+/** Ugyanannak a cellának a másik átlója (a kettő keresztezné egymást), ha az él átlós. */
+export function crossingKey(key: EdgeKey): EdgeKey | null {
+  const [o, x, y] = key.split(':');
+  return o === 'd' ? `u:${x}:${y}` : o === 'u' ? `d:${x}:${y}` : null;
 }
 
 export type BuildResult =
@@ -70,6 +85,8 @@ export function buildProblem(board: Board): BuildResult {
   const dangling = prune(parts);
   const fail = (reason: string): BuildResult => ({ ok: false, reason, dangling });
   const kinds = [...parts.values()].map((p) => p.kind);
+  const crossed = [...parts.keys()].find((k) => k.startsWith('d:') && parts.has(crossingKey(k)!));
+  if (crossed) return fail('Két átlós szakasz keresztezi egymást ugyanabban a négyzetben: az egyiket vedd ki (a keresztezés nem csatlakozás).');
   if (!parts.size) return fail('Húzz elemeket a rácsra, és kösd össze őket vezetékkel úgy, hogy zárt kört alkossanak.');
   if (!kinds.some((k) => k === 'V' || k === 'I')) return fail('A zárt körben nincs forrás: tegyél bele feszültség- vagy áramforrást.');
   if (!kinds.includes('R')) return fail('A zárt körben nincs ellenállás: tegyél bele legalább egyet.');
@@ -99,8 +116,9 @@ export function buildProblem(board: Board): BuildResult {
   }
 
   const map = toNetlist(circuit);
-  const shorted = map.net.elements.find((e) => e.a === e.b);
-  if (shorted) return fail(`${shorted.id} mindkét vége ugyanarra a vezetékre csatlakozik (rövidre van zárva): vedd ki a mellette futó vezetéket.`);
+  const shorted = map.net.elements.filter((e) => e.a === e.b).map((e) => e.id);
+  if (shorted.length)
+    return fail(`${shorted.join(', ')} mindkét vége ugyanarra a vezetékre csatlakozik (rövidre van zárva): vedd ki a ${shorted.length > 1 ? 'mellettük' : 'mellette'} futó vezetéket.`);
   let sol: ReturnType<typeof solve> = null;
   try {
     sol = solve(map.net);
