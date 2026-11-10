@@ -25,7 +25,19 @@ export interface WheelOptions {
   onPick: (id: string, level: string) => void;
 }
 
-/** Rövid jel és felirat a cikkekbe (a teljes név középen látszik). */
+/**
+ * Rajzolt jel: kis hurok két forrással (IEC-jelek, mint a feladatok rajzán): balra feszültségforrás
+ * (a vonal a vezeték mentén), jobbra áramforrás (a vonal a vezetékre merőleges). Betűjel helyett,
+ * mert az Ug, Uü máshol mást jelent. A rajz közepe a (0, 0), kb. 46 × 28 egység.
+ */
+const ICON_SOURCES =
+  '<svg:g fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M-14 -14H14M-14 14H14M-14 -14V14M14 -14V-8M14 8V14"/>' +
+  '<circle cx="-14" cy="0" r="8" class="wheel-icon-fill"/><path d="M-14 -8V8"/>' +
+  '<circle cx="14" cy="0" r="8" class="wheel-icon-fill"/><path d="M6 0H22"/>' +
+  '</svg:g>';
+
+/** Rövid jel (szöveg vagy rajz) és felirat a cikkekbe (a teljes név középen látszik). */
 const SHORT: Record<string, [string, string]> = {
   ohm: ['Ω', 'Ohm'],
   eredo: ['Rₑ', 'Eredő'],
@@ -34,7 +46,7 @@ const SHORT: Record<string, [string, string]> = {
   halozat: ['U·I·P', 'Analízis'],
   'valodi-gen': ['Rb', 'Generátor'],
   thevenin: ['A–B', 'Thevenin'],
-  tobbforras: ['Ug+Ig', 'Több forrás'],
+  tobbforras: [ICON_SOURCES, 'Több forrás'],
   tanari: ['ZH', 'Tanári'],
   'csillag-delta': ['Y–Δ', 'Csillag-delta'],
   zh: ['ZH', 'Nagy hálózat'],
@@ -87,11 +99,20 @@ export function openTopicWheel(o: WheelOptions): void {
     path.setAttribute('d', sector(mid - step / 2 + GAP / 2, mid + step / 2 - GAP / 2));
     const [tx, ty] = polar((R_OUT + R_IN) / 2, mid);
     const [sym, label] = SHORT[t.id] ?? [t.name.slice(0, 2), t.name.split(' ')[0]!];
-    const s = document.createElementNS(NS, 'text');
-    s.setAttribute('class', 'wheel-sym');
-    s.setAttribute('x', f(tx));
-    s.setAttribute('y', f(ty - 2));
-    s.textContent = sym;
+    let s: SVGElement;
+    if (sym.startsWith('<svg:')) {
+      // Rajzolt jel: a cikk közepe fölé tolva, a betűjelek helyén.
+      s = document.createElementNS(NS, 'g');
+      s.setAttribute('class', 'wheel-icon');
+      s.setAttribute('transform', `translate(${f(tx)} ${f(ty - 12)})`);
+      s.innerHTML = sym.replaceAll('svg:', '');
+    } else {
+      s = document.createElementNS(NS, 'text');
+      s.setAttribute('class', 'wheel-sym');
+      s.setAttribute('x', f(tx));
+      s.setAttribute('y', f(ty - 2));
+      s.textContent = sym;
+    }
     const l = document.createElementNS(NS, 'text');
     l.setAttribute('class', 'wheel-label');
     l.setAttribute('x', f(tx));
