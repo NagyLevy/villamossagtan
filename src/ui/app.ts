@@ -137,7 +137,7 @@ export function startApp(root: HTMLElement): void {
     if (settings.domain === 'ac') return makeTask({ domain: 'ac', topic: settings.acTopic, level: settings.acLevel, seed });
     const level: Level = settings.dcTopic === 'zh' ? 'zh' : settings.dcLevel;
     // A Csillag-delta témakörben az átalakítás a módszer.
-    const method: MethodId = settings.dcTopic === 'csillag-delta' ? 'csillag-delta' : settings.method === 'csillag-delta' && !settings.starDelta ? 'redukcio' : settings.method;
+    const method: MethodId = settings.dcTopic === 'halozat' ? 'kirchhoff' : settings.dcTopic === 'csillag-delta' ? 'csillag-delta' : settings.method === 'csillag-delta' && !settings.starDelta ? 'redukcio' : settings.method;
     // Bekapcsolt csillag-deltánál sem minden feladat hidas: csak kb. minden harmadik.
     const sd = sdOn(settings.dcTopic);
     const found = findFor(method, settings.dcTopic, level, sd);
@@ -167,6 +167,17 @@ export function startApp(root: HTMLElement): void {
 
   // ───────── Gyakorlás ─────────
 
+  /**
+   * A témakör saját módszere: a Csillag-delta témakörben az átalakítás, a Teljes hálózatanalízisben
+   * az egyenletrendszer (Kirchhoff-egyenletek); máshol a választott módszer.
+   */
+  const topicMethod = (): MethodId => {
+    if (settings.domain !== 'dc') return settings.method;
+    if (settings.dcTopic === 'csillag-delta') return 'csillag-delta';
+    if (settings.dcTopic === 'halozat') return 'kirchhoff';
+    return settings.method;
+  };
+
   let practiceCurrent: Task | null = null;
   const newPractice = () => {
     try {
@@ -175,7 +186,7 @@ export function startApp(root: HTMLElement): void {
       toast(String(e instanceof Error ? e.message : e));
       return;
     }
-    viewer.load(practiceCurrent, { mode: 'practice', method: settings.dcTopic === 'csillag-delta' && settings.domain === 'dc' ? 'csillag-delta' : settings.method, allowNew: true });
+    viewer.load(practiceCurrent, { mode: 'practice', method: topicMethod(), allowNew: true });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -191,7 +202,7 @@ export function startApp(root: HTMLElement): void {
   const showPractice = () => {
     main.replaceChildren(h('div', { class: 'mode-bar' }, topicPicker(() => newPractice())), viewer.el);
     if (!practiceCurrent || practiceCurrent.domain !== settings.domain) newPractice();
-    else viewer.load(practiceCurrent, { mode: 'practice', method: settings.method, allowNew: true });
+    else viewer.load(practiceCurrent, { mode: 'practice', method: topicMethod(), allowNew: true });
   };
 
   // ───────── Időre ─────────

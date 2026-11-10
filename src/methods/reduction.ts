@@ -566,7 +566,7 @@ export function dividerStep(parent: Edge, child: Edge, values: Map<Edge, { U: nu
 }
 
 /** Teljes hálózatanalízis: minden elem U, I, P értéke táblázatban, ellenőrzéssel. */
-function tableSteps(p: Problem, leafValues: Map<string, { U: number; I: number }>, els: Map<string, CircuitElement>): Step[] {
+export function tableSteps(p: Problem, leafValues: Map<string, { U: number; I: number }>, els: Map<string, CircuitElement>, how?: string): Step[] {
   const rows: TableRow[] = [...leafValues.entries()]
     .map(([id, v]) => ({ element: id, label: `${id} (${valueLabel(els.get(id)!)})`, U: v.U, I: v.I, P: v.U * v.I }))
     .sort((a, b) => a.element.localeCompare(b.element, 'hu', { numeric: true }));
@@ -576,7 +576,7 @@ function tableSteps(p: Problem, leafValues: Map<string, { U: number; I: number }
   return [
     {
       title: 'Minden elem árama és feszültsége',
-      text: 'Az osztásokat a teljes összevonási fán végigvezetve minden elem feszültsége és árama adódik; a teljesítmény P = U · I (az ellenállásoké pozitív, a forrásé negatív, ha teljesítményt ad le).',
+      text: `${how ?? 'Az osztásokat a teljes összevonási fán végigvezetve minden elem feszültsége és árama adódik'}; a teljesítmény P = U · I (az ellenállásoké pozitív, a forrásé negatív, ha teljesítményt ad le).`,
       table: rows,
       highlight: { arrows: rows.filter((r) => els.get(r.element)?.kind === 'R').map((r) => ({ element: r.element, kind: 'I', value: r.I })) },
     },

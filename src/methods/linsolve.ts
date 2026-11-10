@@ -62,9 +62,11 @@ const system = (eqs: Eq[], names: string[]) =>
   `\\begin{aligned} ${eqs.map((e) => `\\text{(${e.label})}\\quad & ${lhs(e.a, names)} = ${texNum(e.r)}`).join(' \\\\ ')} \\end{aligned}`;
 
 /** `names`: az ismeretlenek LaTeX-jele, `plain`: ugyanaz olvasható szövegként (pl. φ₁, I₂). */
-export function solveSystemSteps(A: number[][], b: number[], names: string[], plain: string[], x: number[], unit: string, highlight: Highlight, group?: string): Step[] {
+export function solveSystemSteps(A: number[][], b: number[], names: string[], plain: string[], x: number[], unit: string | string[], highlight: Highlight, group?: string, opts: { preferUnit?: boolean } = {}): Step[] {
   const n = b.length;
-  const res = (i: number) => `${names[i]} = ${texNum(x[i]!)}\\,\\text{${unit}}`;
+  // Vegyes ismeretleneknél (pl. ágáramok és egy áramforrás feszültsége) ismeretlenenként más a mértékegység.
+  const u = (i: number) => (Array.isArray(unit) ? unit[i]! : unit);
+  const res = (i: number) => `${names[i]} = ${texNum(x[i]!)}\\,\\text{${u(i)}}`;
   if (n === 1) {
     return [
       {
@@ -98,6 +100,21 @@ export function solveSystemSteps(A: number[][], b: number[], names: string[], pl
     eqs.forEach((e, ei) => {
       for (const v of remaining) if (Math.abs(e.a[v]!) > best.abs) best = { eq: ei, v, abs: Math.abs(e.a[v]!) };
     });
+    // Kézi számolásnál (pl. csomóponti egyenletek: I₁ + I₂ − I₃ = 0) kényelmesebb az 1-es együtthatójú
+    // ismeretlent kifejezni, a legrövidebb egyenletből: így nem jönnek elő törtek.
+    if (opts.preferUnit) {
+      // Amelyik ismeretlen csak ebben az egyenletben szerepel, azt hagyjuk a végére (a kifejezése nem ejt ki semmit).
+      let unit: { eq: number; v: number; len: number } | null = null;
+      eqs.forEach((e, ei) => {
+        const len = e.a.filter((x) => !isZero(x)).length;
+        for (const v of remaining) {
+          if (Math.abs(Math.abs(e.a[v]!) - 1) > 1e-9) continue;
+          const score = len + (eqs.some((o, oi) => oi !== ei && !isZero(o.a[v]!)) ? 0 : 1000);
+          if (!unit || score < unit.len) unit = { eq: ei, v, len: score };
+        }
+      });
+      if (unit) best = { eq: (unit as { eq: number }).eq, v: (unit as { v: number }).v, abs: 1 };
+    }
     if (best.v < 0) break;
     const src = eqs[best.eq]!;
     const v = best.v;
@@ -111,7 +128,7 @@ export function solveSystemSteps(A: number[][], b: number[], names: string[], pl
     steps.push({
       title: `${plain[v]} kifejezése`,
       text: `A (${src.label}) egyenletből kifejezzük ${plain[v]}-t: minden más tagot átviszünk a jobb oldalra (ott előjelet váltanak), aztán az egészet elosztjuk ${plain[v]} együtthatójával.`,
-      terms: [`\\begin{aligned} ${term(av, names[v]!, true)} &= ${exprTex(moved, names)} \\\\ ${names[v]} &= ${exprTex(e, names)} \\end{aligned}`],
+      terms: [Math.abs(av - 1) < 1e-12 ? `${names[v]} = ${exprTex(e, names)}` : `\\begin{aligned} ${term(av, names[v]!, true)} &= ${exprTex(moved, names)} \\\\ ${names[v]} &= ${exprTex(e, names)} \\end{aligned}`],
       highlight,
       group,
     });
@@ -164,7 +181,7 @@ export function solveSystemSteps(A: number[][], b: number[], names: string[], pl
       if (isZero(k, scale)) continue;
       s += `${s === '' ? '' : ' + '}${texNum(k, { paren: s !== '' })} \\cdot ${texNum(x[j]!, { paren: true })}`;
     }
-    return `${names[e.v]} &= ${exprTex(e, names)} = ${s || '0'} = ${texNum(x[e.v]!)}\\,\\text{${unit}}`;
+    return `${names[e.v]} &= ${exprTex(e, names)} = ${s || '0'} = ${texNum(x[e.v]!)}\\,\\text{${u(e.v)}}`;
   });
   steps.push({
     title: 'Visszahelyettesítés',

@@ -69,16 +69,16 @@ export interface TopicInfo {
   hint: string;
 }
 
+// A „Valódi generátor terhelése” és „A tanár úr feladattípusai” témakör egyelőre ki van véve a választóból
+// (a generátor kódja megvan, visszakapcsolható ide egy sorral).
 export const DC_TOPICS: TopicInfo[] = [
   { id: 'ohm', name: TOPIC_NAMES.ohm, hint: 'U = R·I, P = U·I' },
   { id: 'eredo', name: TOPIC_NAMES.eredo, hint: 'soros, párhuzamos összevonás' },
   { id: 'oszto', name: TOPIC_NAMES.oszto, hint: 'feszültség- és áramosztó' },
   { id: 'kirchhoff', name: TOPIC_NAMES.kirchhoff, hint: 'csomóponti és huroktörvény' },
   { id: 'halozat', name: TOPIC_NAMES.halozat, hint: 'minden elem U, I, P' },
-  { id: 'valodi-gen', name: TOPIC_NAMES['valodi-gen'], hint: 'belső ellenállás, terhelés' },
   { id: 'thevenin', name: TOPIC_NAMES.thevenin, hint: 'helyettesítő generátor' },
   { id: 'tobbforras', name: TOPIC_NAMES.tobbforras, hint: 'hurokáram, csomóponti, szuperpozíció' },
-  { id: 'tanari', name: TOPIC_NAMES.tanari, hint: 'a gyakorlati füzet típusai: szuperpozíció, Thevenin/Norton, csomóponti, hurokáram' },
   { id: 'csillag-delta', name: TOPIC_NAMES['csillag-delta'], hint: 'Δ ↔ Y átalakítás, hidas hálózatok' },
   { id: 'zh', name: TOPIC_NAMES.zh, hint: 'nagy hálózat, ZH-méret' },
 ];

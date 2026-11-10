@@ -6,7 +6,7 @@ import type { Level } from '../generator/values';
 import type { AcLevel, AcTopic } from '../ac/problems';
 import type { DailyLevel } from '../daily/schedule';
 import type { MethodId } from '../methods/types';
-import type { ExamKind } from '../tasks';
+import { DC_TOPICS, type ExamKind } from '../tasks';
 import type { Domain } from '../tasks/types';
 
 export type { MethodId };
@@ -59,7 +59,10 @@ export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
+    const s = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
+    // Ha a mentett témakör már nincs a választóban (pl. kivett témakör), az alapértelmezettre állunk.
+    if (!DC_TOPICS.some((t) => t.id === s.dcTopic)) s.dcTopic = DEFAULT_SETTINGS.dcTopic;
+    return s;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
