@@ -2,7 +2,7 @@
 // között húzva. Minden változás után újraszámol: táblázat minden elem U, I, P értékével, alatta a megoldás
 // nézete, ahol a módszerek egyenként végignézhetők és össze vannak vetve. A modell: src/builder/model.ts.
 
-import { buildProblem, DEFAULT_VALUE, edgeEnds, edgeKey, exampleBoard, type Board, type EdgeKey, type Part, type PartKind } from '../builder/model';
+import { buildProblem, crossingKey, DEFAULT_VALUE, edgeEnds, edgeKey, exampleBoard, type Board, type EdgeKey, type Part, type PartKind } from '../builder/model';
 import { tableTargets } from '../methods/check';
 import { dcTask } from '../tasks';
 import { formatQuantity, type Unit } from '../units';
@@ -96,7 +96,10 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     g.append(svgEl('line', { x1, y1, x2, y2, class: 'bp-hit' }));
     g.append(svgEl('line', { x1, y1, x2, y2, class: 'bp-wire' }));
     // Az elem a saját tengelye mentén rajzolva (vízszintes alak), függőleges élen elforgatva.
-    const body = svgEl('g', { transform: `translate(${cx} ${cy}) rotate(${horiz ? 0 : 90})` });
+    // Az él iránya: vízszintes 0°, függőleges 90°, átlós ±45° (a bal végponttól nézve le- vagy felfelé).
+    const vert = x1 === x2;
+    const angle = horiz ? 0 : vert ? 90 : y2 > y1 ? 45 : -45;
+    const body = svgEl('g', { transform: `translate(${cx} ${cy}) rotate(${angle})` });
     if (part.kind === 'R') body.append(svgEl('rect', { x: -24, y: -10, width: 48, height: 20, rx: 2, class: 'bp-body' }));
     if (part.kind === 'V' || part.kind === 'I') {
       body.append(svgEl('circle', { cx: 0, cy: 0, r: 16, class: 'bp-body' }));
@@ -115,14 +118,16 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       const name = names.get(key);
       const value = formatQuantity(part.value, UNIT_OF[part.kind]);
       const off = part.kind === 'R' ? 16 : 22;
-      // Vízszintes elemnél a felirat fölötte, egy sorban; függőlegesnél jobbra, két sorban (név, alatta az érték),
-      // hogy a szomszédos ágba ne lógjon át.
-      const label = svgEl('text', horiz ? { x: cx, y: cy - off - 4, 'text-anchor': 'middle', class: 'bp-label' } : { x: cx + off + 4, y: cy + (name ? -3 : 5), 'text-anchor': 'start', class: 'bp-label' });
+      // Vízszintes elemnél a felirat fölötte, egy sorban; függőlegesnél jobbra, átlósnál az elem melletti szabad
+      // sarokban, két sorban (név, alatta az érték), hogy a szomszédos ágba ne lógjon át.
+      const lx = vert ? cx + off + 4 : cx + off + 2;
+      const ly = vert ? cy + (name ? -3 : 5) : angle > 0 ? cy - off - (name ? 10 : 2) : cy + off + 12;
+      const label = svgEl('text', horiz ? { x: cx, y: cy - off - 4, 'text-anchor': 'middle', class: 'bp-label' } : { x: lx, y: ly, 'text-anchor': 'start', class: 'bp-label' });
       if (horiz || !name) label.textContent = `${name ? `${name} = ` : ''}${value}`;
       else {
-        const l1 = svgEl('tspan', { x: cx + off + 4 });
+        const l1 = svgEl('tspan', { x: lx });
         l1.textContent = name;
-        const l2 = svgEl('tspan', { x: cx + off + 4, dy: 16, class: 'bp-label-value' });
+        const l2 = svgEl('tspan', { x: lx, dy: 16, class: 'bp-label-value' });
         l2.textContent = value;
         label.append(l1, l2);
       }
@@ -204,6 +209,50 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
 
   // ───────── Szerkesztés ─────────
 
+  const canvasWrap = h('div', { class: 'builder-canvas' }, svg as unknown as HTMLElement);
+
+  /** Érték átírása helyben: beviteli mező a felirat helyén (Enter vagy kikattintás ment, Esc elvet). */
+  const editInline = (key: EdgeKey, labelEl: SVGTextElement) => {
+    const part = board.parts[key];
+    if (!part || part.kind === 'W') return;
+    canvasWrap.querySelector('.builder-inline')?.remove();
+    const lr = labelEl.getBoundingClientRect();
+    const wr = canvasWrap.getBoundingClientRect();
+    const input = h('input', { class: 'builder-inline', attrs: { type: 'text', inputmode: 'decimal', value: String(part.value).replace('.', ','), 'aria-label': `Érték (${UNIT_OF[part.kind]})` } });
+    const width = 92;
+    input.style.left = `${Math.max(4, Math.min(wr.width - width - 4, lr.left - wr.left + lr.width / 2 - width / 2))}px`;
+    input.style.top = `${lr.top - wr.top + lr.height / 2 - 17}px`;
+    input.style.width = `${width}px`;
+    let done = false;
+    const finish = (save: boolean) => {
+      if (done) return;
+      const v = parseValue(input.value);
+      if (save && v === null) {
+        input.classList.add('is-bad');
+        return;
+      }
+      done = true;
+      input.remove();
+      if (save && v !== null && v !== part.value) {
+        part.value = v;
+        recompute();
+      }
+      renderEditor();
+    };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => (parseValue(input.value) === null ? finish(false) : finish(true)));
+    canvasWrap.append(input);
+    selected = key;
+    draw();
+    renderEditor();
+    input.focus();
+    input.select();
+  };
+
   const editor = h('div', { class: 'builder-editor' });
 
   const renderEditor = () => {
@@ -214,10 +263,10 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
           class: 'builder-help',
           text:
             tool === 'wire'
-              ? 'Vezeték: húzd az egeret (ujjad) egyik rácsponttól a másikig. Elemre kattintva az értékét állíthatod.'
+              ? 'Vezeték: kattints egy rácsvonalra vagy egy négyzet átlójára, vagy húzd a vonalat pontról pontra. Az értéket a számra kattintva írhatod át.'
               : tool === 'erase'
                 ? 'Radír: kattints arra az elemre vagy vezetékre, amit törölni szeretnél.'
-                : `${TOOL_NAMES[tool]}: kattints egy rácsvonalra, vagy húzd oda a gombot az eszköztárról.`,
+                : `${TOOL_NAMES[tool]}: kattints egy rácsvonalra vagy egy négyzet átlójára (keresztbe), vagy húzd oda a gombot az eszköztárról.`,
         }),
       );
       return;
@@ -269,10 +318,20 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     renderEditor();
   };
 
+  /** Egy négyzetben csak az egyik átló lehet foglalt (a két átló keresztezné egymást): a másik kikerül. */
+  const clearCrossing = (key: EdgeKey) => {
+    const cross = crossingKey(key);
+    if (cross && board.parts[cross]) {
+      delete board.parts[cross];
+      if (selected === cross) selected = null;
+    }
+  };
+
   const place = (key: EdgeKey, kind: PartKind) => {
     const old = board.parts[key];
     // Ugyanolyan elemre ejtve megmarad az érték; különben az alapérték jön.
     board.parts[key] = old && old.kind === kind ? old : { kind, value: DEFAULT_VALUE[kind], dir: kind === 'V' || kind === 'I' ? -1 : 1 };
+    clearCrossing(key);
     selected = kind === 'W' ? null : key;
     recompute();
     renderEditor();
@@ -299,7 +358,18 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     const vOk = vy >= 0 && vy < board.rows && vx >= 0 && vx <= board.cols;
     const hd = hOk ? Math.abs(gy - hy) : Infinity;
     const vd = vOk ? Math.abs(gx - vx) : Infinity;
-    if (Math.min(hd, vd) > 0.5) return null;
+    // A négyzet két átlója: a négyzet belsejében, az átló vonalához közel (a sarkoknál a rácsvonalak nyernek).
+    const cx = Math.floor(gx);
+    const cy = Math.floor(gy);
+    const fx = gx - cx;
+    const fy = gy - cy;
+    const cellOk = cx >= 0 && cx < board.cols && cy >= 0 && cy < board.rows;
+    const dd = cellOk ? Math.abs(fx - fy) / Math.SQRT2 : Infinity;
+    const ud = cellOk ? Math.abs(fx + fy - 1) / Math.SQRT2 : Infinity;
+    const orth = Math.min(hd, vd);
+    const diag = Math.min(dd, ud);
+    if (diag < 0.16 && diag < orth) return dd <= ud ? `d:${cx}:${cy}` : `u:${cx}:${cy}`;
+    if (orth > 0.5) return null;
     return hd <= vd ? `h:${hx}:${hy}` : `v:${vx}:${vy}`;
   };
   const nearestNode = ([gx, gy]: [number, number]): [number, number] | null => {
@@ -317,6 +387,13 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     const pos = gridPos(e);
     const edge = nearestEdge(pos);
     const hit = (e.target as Element).closest<SVGGElement>('.bp')?.dataset.key ?? null;
+    // Az értékre (feliratra) kattintva helyben átírható.
+    const labelEl = (e.target as Element).closest<SVGTextElement>('.bp-label');
+    if (labelEl && hit && tool !== 'erase') {
+      e.preventDefault();
+      editInline(hit, labelEl);
+      return;
+    }
     svg.setPointerCapture(e.pointerId);
     if (tool === 'erase') {
       const key = hit ?? (edge && board.parts[edge] ? edge : null);
@@ -334,6 +411,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       return;
     }
     if (hit && board.parts[hit]) moving = { key: hit, moved: false, x: e.clientX, y: e.clientY };
+    // Üres rácsvonalra kattintva vezeték kerül oda (húzni nem kötelező).
+    else if (edge && !board.parts[edge]) place(edge, 'W');
     else select(null);
   });
 
@@ -344,7 +423,10 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       if (node && (node[0] !== wireFrom[0] || node[1] !== wireFrom[1])) {
         const key = edgeKey(wireFrom, node);
         if (key) {
-          if (!board.parts[key]) board.parts[key] = { kind: 'W', value: 0, dir: 1 };
+          if (!board.parts[key]) {
+            board.parts[key] = { kind: 'W', value: 0, dir: 1 };
+            clearCrossing(key);
+          }
           wireFrom = node;
           recompute();
         }
@@ -380,6 +462,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
         if (edge && edge !== m.key && inside(e)) {
           board.parts[edge] = board.parts[m.key]!;
           delete board.parts[m.key];
+          clearCrossing(edge);
           selected = edge;
           recompute();
           renderEditor();
@@ -483,7 +566,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       h('h1', { class: 'problem-title', text: 'Építs áramkört' }),
       h('p', { class: 'gate-info', text: 'Húzd az elemeket a rácsra, kösd össze őket vezetékkel, és állítsd be az értékeket. A program azonnal kiszámolja, és minden alkalmazható módszerrel megmutatja a levezetést.' }),
     ),
-    h('section', { class: 'card builder-card', attrs: { 'aria-label': 'Áramkör-szerkesztő' } }, h('div', { class: 'builder-bar' }, palette, actions), h('div', { class: 'builder-canvas' }, svg as unknown as HTMLElement), editor),
+    h('section', { class: 'card builder-card', attrs: { 'aria-label': 'Áramkör-szerkesztő' } }, h('div', { class: 'builder-bar' }, palette, actions), canvasWrap, editor),
     status,
     h('section', { class: 'card builder-results-card' }, results),
     solution,

@@ -159,7 +159,9 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   sor a tesztek miatt megmaradt). Beadás után összesítés és feladatonkénti megoldás. Pontrendszer, ranglista nincs.
 - **Építő:** saját áramkör rácson (`src/builder/model.ts` a modell, `src/ui/builder.ts` a felület): az elemek
   (ellenállás, feszültség- és áramforrás) az eszköztárról a rácsvonalakra húzhatók, a vezeték pontról pontra húzva
-  rajzolható; elemre kattintva érték, megfordítás, törlés. Minden változás után újraszámol: táblázat minden elem
+  rajzolható, vagy üres rácsvonalra kattintva kerül oda; minden elem és vezeték átlósan (egy négyzet átlójára,
+  45°) is tehető, egy négyzetben csak az egyik átló lehet foglalt; elemre kattintva érték, megfordítás, törlés, az
+  érték a rajzon a számra kattintva helyben is átírható. Minden változás után újraszámol: táblázat minden elem
   U, I, P értékével (MNA), alatta a megoldás nézete (`solved` nézet), ahol minden alkalmazható módszer levezetése
   választható, és a módszerek össze vannak vetve. A lógó végek kimaradnak, a hibás rajzra (nincs forrás, rövidre
   zárt elem, két külön kör, párhuzamos feszültségforrások) magyar üzenet jön. Teszt: `builder.test.ts`.

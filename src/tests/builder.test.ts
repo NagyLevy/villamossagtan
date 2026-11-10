@@ -85,3 +85,22 @@ describe('áramkör-építő', () => {
     expect(two).toMatchObject({ ok: false, reason: expect.stringContaining('külön') });
   });
 });
+
+describe('áramkör-építő: átlós (keresztbe tett) elemek', () => {
+  it('átlós ellenállás mindkét irányban: minden alkalmazható módszer = MNA', () => {
+    // Négyzet: bal oldalon forrás, fent és jobbra ellenállás, alul vezeték, az átlóban ellenállás.
+    for (const diag of ['d:0:0', 'u:0:0']) {
+      const { p } = checkAll(board({ 'v:0:0': V(12), 'h:0:0': R(2), 'v:1:0': R(6), 'h:0:1': W, [diag]: R(3) }), ['hurokaram', 'csomoponti']);
+      expect(p.stats.resistors).toBe(3);
+    }
+  });
+
+  it('átlós vezeték és átlós forrás is működik', () => {
+    checkAll(board({ 'd:0:0': V(9), 'h:0:0': R(3), 'v:1:0': R(6), 'u:1:0': W, 'h:1:0': R(4) }), ['csomoponti']);
+  });
+
+  it('két egymást keresztező átló: üzenet, nem számolás', () => {
+    const r = buildProblem(board({ 'v:0:0': V(12), 'h:0:0': R(2), 'v:1:0': R(6), 'h:0:1': W, 'd:0:0': R(3), 'u:0:0': R(4) }));
+    expect(r).toMatchObject({ ok: false, reason: expect.stringContaining('keresztezi') });
+  });
+});
