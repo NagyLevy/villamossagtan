@@ -66,13 +66,13 @@ const ICONS: Record<string, string> = {
 
 /** Rövid felirat a cikkekbe, és betűjel ott, ahol (még) nincs rajz (a teljes név középen látszik). */
 const SHORT: Record<string, [string, string]> = {
-  ohm: ['Ω', 'Ohm'],
+  ohm: ['Ω', 'Ohm-törvény,\nteljesítmény'],
   eredo: ['Rₑ', 'Eredő'],
-  oszto: ['U÷I', 'Osztók'],
+  oszto: ['U÷I', 'Feszültség- és\náramosztó'],
   kirchhoff: ['ΣI', 'Kirchhoff'],
   halozat: ['U·I·P', 'Analízis'],
   'valodi-gen': ['Rb', 'Generátor'],
-  thevenin: ['A–B', 'Thevenin'],
+  thevenin: ['A–B', 'Helyettesítő\ngenerátor'],
   tobbforras: ['', 'Több forrás'],
   tanari: ['ZH', 'Tanári'],
   'csillag-delta': ['Y–Δ', 'Csillag-delta'],
@@ -127,25 +127,34 @@ export function openTopicWheel(o: WheelOptions): void {
     const [tx, ty] = polar((R_OUT + R_IN) / 2, mid);
     const [letters, label] = SHORT[t.id] ?? [t.name.slice(0, 2), t.name.split(' ')[0]!];
     const sym = ICONS[t.id] ?? letters;
+    // Kétsoros feliratnál a jel és a felirat kicsit feljebb kerül, hogy a cikk közepén maradjon.
+    const up = label.includes('\n') ? -6 : 0;
     let s: SVGElement;
     if (sym.startsWith('<svg:')) {
       // Rajzolt jel: a cikk közepe fölé tolva, a betűjelek helyén.
       s = document.createElementNS(NS, 'g');
       s.setAttribute('class', 'wheel-icon');
-      s.setAttribute('transform', `translate(${f(tx)} ${f(ty - 12)})`);
+      s.setAttribute('transform', `translate(${f(tx)} ${f(ty - 12 + up)})`);
       s.innerHTML = sym.replaceAll('svg:', '');
     } else {
       s = document.createElementNS(NS, 'text');
       s.setAttribute('class', 'wheel-sym');
       s.setAttribute('x', f(tx));
-      s.setAttribute('y', f(ty - 2));
+      s.setAttribute('y', f(ty - 2 + up));
       s.textContent = sym;
     }
     const l = document.createElementNS(NS, 'text');
     l.setAttribute('class', 'wheel-label');
     l.setAttribute('x', f(tx));
-    l.setAttribute('y', f(ty + 17));
-    l.textContent = label;
+    l.setAttribute('y', f(ty + 17 + up));
+    // A felirat legfeljebb két sor ('\n' választja el).
+    label.split('\n').forEach((line, k) => {
+      const ts = document.createElementNS(NS, 'tspan');
+      ts.setAttribute('x', f(tx));
+      ts.setAttribute('dy', k === 0 ? '0' : '12');
+      ts.textContent = line;
+      l.append(ts);
+    });
     g.append(path, s, l);
     g.addEventListener('pointerenter', () => setHover(i));
     g.addEventListener('click', () => pick(i));

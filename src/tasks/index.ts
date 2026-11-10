@@ -72,12 +72,12 @@ export interface TopicInfo {
 // A „Valódi generátor terhelése” és „A tanár úr feladattípusai” témakör egyelőre ki van véve a választóból
 // (a generátor kódja megvan, visszakapcsolható ide egy sorral).
 export const DC_TOPICS: TopicInfo[] = [
-  { id: 'ohm', name: TOPIC_NAMES.ohm, hint: 'U = R·I, P = U·I' },
+  { id: 'ohm', name: TOPIC_NAMES.ohm, hint: 'egy ellenállás: U = R·I, P = U·I' },
   { id: 'eredo', name: TOPIC_NAMES.eredo, hint: 'soros, párhuzamos összevonás' },
-  { id: 'oszto', name: TOPIC_NAMES.oszto, hint: 'feszültség- és áramosztó' },
+  { id: 'oszto', name: TOPIC_NAMES.oszto, hint: 'egy forrás: feszültségosztó és áramosztó képlet' },
   { id: 'kirchhoff', name: TOPIC_NAMES.kirchhoff, hint: 'csomóponti és huroktörvény' },
   { id: 'halozat', name: TOPIC_NAMES.halozat, hint: 'minden elem U, I, P' },
-  { id: 'thevenin', name: TOPIC_NAMES.thevenin, hint: 'helyettesítő generátor' },
+  { id: 'thevenin', name: TOPIC_NAMES.thevenin, hint: 'Rg, Uü, In, terhelőáram, legnagyobb teljesítmény' },
   { id: 'tobbforras', name: TOPIC_NAMES.tobbforras, hint: 'hurokáram, csomóponti, szuperpozíció' },
   { id: 'csillag-delta', name: TOPIC_NAMES['csillag-delta'], hint: 'Δ ↔ Y átalakítás, hidas hálózatok' },
   { id: 'zh', name: TOPIC_NAMES.zh, hint: 'nagy hálózat, ZH-méret' },
