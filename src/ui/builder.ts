@@ -10,8 +10,8 @@ import { button } from './components';
 import { h } from './dom';
 import type { TaskViewer } from './viewer';
 
-const CELL = 96;
-const PAD = 40;
+const CELL = 124;
+const PAD = 58;
 const KEY = 'villamossagtan.epito.v1';
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -82,23 +82,54 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
 
   // ───────── Rajz ─────────
 
-  const partSvg = (key: EdgeKey, part: Part, ghost = false): SVGGElement => {
+  type Box = { x1: number; y1: number; x2: number; y2: number };
+  const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)) * Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+
+  /** Egy elem helye a rajzon: közép, szög (0°, 90°, ±45°), és az elem testének befoglaló doboza. */
+  const geometry = (key: EdgeKey, part: Part) => {
     const [a, b] = edgeEnds(key);
     const [x1, y1] = px(a);
     const [x2, y2] = px(b);
     const cx = (x1 + x2) / 2;
     const cy = (y1 + y2) / 2;
-    const horiz = y1 === y2;
-    const cls = ['bp', `bp-${part.kind}`, key === selected ? 'is-selected' : '', dangling.has(key) ? 'is-dangling' : '', ghost ? 'is-ghost' : ''].filter(Boolean).join(' ');
+    const angle = y1 === y2 ? 0 : x1 === x2 ? 90 : y2 > y1 ? 45 : -45;
+    const half = part.kind === 'W' ? [0, 0] : part.kind === 'R' ? (angle === 0 ? [26, 12] : angle === 90 ? [12, 26] : [22, 22]) : [18, 18];
+    const body: Box = { x1: cx - half[0]!, y1: cy - half[1]!, x2: cx + half[0]!, y2: cy + half[1]! };
+    return { x1, y1, x2, y2, cx, cy, angle, body };
+  };
+
+  /**
+   * A felirat helye az elem egyik oldalán. `side` = +1: az elem „felső” oldala (vízszintesnél fölötte,
+   * függőlegesnél jobbra, átlósnál a felső sarokban), −1: az átellenes oldal. Vízszintes elemnél egy sor
+   * („R4 = 4 Ω”), különben két sor (név, alatta az érték), hogy a szomszédos ágba ne lógjon át.
+   */
+  const labelSpot = (g: ReturnType<typeof geometry>, part: Part, lines: string[], side: 1 | -1) => {
+    const rad = (g.angle * Math.PI) / 180;
+    const nx = Math.sin(rad) * side;
+    const ny = -Math.cos(rad) * side;
+    const w = Math.max(...lines.map((t) => t.length)) * 8.2 + 4;
+    const hgt = lines.length * 16 + 2;
+    const d = (part.kind === 'R' ? 14 : 20) + 5;
+    const flat = Math.abs(nx) < 0.1;
+    const anchor = flat ? 'middle' : nx > 0 ? 'start' : 'end';
+    const diag = !flat && Math.abs(ny) > 0.1;
+    const k = diag ? 0.72 : 1;
+    const x = flat ? g.cx : g.cx + Math.sign(nx) * d * k;
+    const top = flat ? (ny < 0 ? g.cy - d - hgt : g.cy + d) : diag ? (ny < 0 ? g.cy - d * k - hgt : g.cy + d * k) : g.cy - hgt / 2;
+    const box: Box = { x1: anchor === 'middle' ? x - w / 2 : anchor === 'start' ? x : x - w, y1: top, x2: anchor === 'middle' ? x + w / 2 : anchor === 'start' ? x + w : x, y2: top + hgt };
+    return { x, top, anchor, box };
+  };
+
+  const partSvg = (key: EdgeKey, part: Part, side: 1 | -1 = 1): SVGGElement => {
+    const geo = geometry(key, part);
+    const { x1, y1, x2, y2, cx, cy, angle } = geo;
+    const cls = ['bp', `bp-${part.kind}`, key === selected ? 'is-selected' : '', dangling.has(key) ? 'is-dangling' : ''].filter(Boolean).join(' ');
     const g = svgEl('g', { class: cls });
     g.dataset.key = key;
     // Széles, láthatatlan sáv: könnyebb eltalálni.
     g.append(svgEl('line', { x1, y1, x2, y2, class: 'bp-hit' }));
     g.append(svgEl('line', { x1, y1, x2, y2, class: 'bp-wire' }));
-    // Az elem a saját tengelye mentén rajzolva (vízszintes alak), függőleges élen elforgatva.
-    // Az él iránya: vízszintes 0°, függőleges 90°, átlós ±45° (a bal végponttól nézve le- vagy felfelé).
-    const vert = x1 === x2;
-    const angle = horiz ? 0 : vert ? 90 : y2 > y1 ? 45 : -45;
+    // Az elem a saját tengelye mentén rajzolva (vízszintes alak), az él irányába forgatva.
     const body = svgEl('g', { transform: `translate(${cx} ${cy}) rotate(${angle})` });
     if (part.kind === 'R') body.append(svgEl('rect', { x: -24, y: -10, width: 48, height: 20, rx: 2, class: 'bp-body' }));
     if (part.kind === 'V' || part.kind === 'I') {
@@ -109,31 +140,74 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       // a nyíl a „from” felé mutat). Áram: az áram irányába (dir = +1: from → to).
       const toward = part.kind === 'V' ? -part.dir : part.dir;
       const tip = 13 * toward;
-      // A nyíl a felirattal ellentétes oldalon fut (vízszintes elemnél alul, függőlegesnél balra).
-      const arrow = svgEl('path', { d: `M${-tip} 26H${tip}M${tip - 6 * toward} 22L${tip} 26L${tip - 6 * toward} 30`, class: `bp-arrow${part.kind === 'I' ? ' is-solid' : ''}` });
+      // A nyíl mindig a felirattal ellentétes oldalon fut.
+      const ay = 26 * side;
+      const arrow = svgEl('path', { d: `M${-tip} ${ay}H${tip}M${tip - 6 * toward} ${ay - 4}L${tip} ${ay}L${tip - 6 * toward} ${ay + 4}`, class: `bp-arrow${part.kind === 'I' ? ' is-solid' : ''}` });
       body.append(arrow);
     }
     g.append(body);
     if (part.kind !== 'W') {
-      const name = names.get(key);
-      const value = formatQuantity(part.value, UNIT_OF[part.kind]);
-      const off = part.kind === 'R' ? 16 : 22;
-      // Vízszintes elemnél a felirat fölötte, egy sorban; függőlegesnél jobbra, átlósnál az elem melletti szabad
-      // sarokban, két sorban (név, alatta az érték), hogy a szomszédos ágba ne lógjon át.
-      const lx = vert ? cx + off + 4 : cx + off + 2;
-      const ly = vert ? cy + (name ? -3 : 5) : angle > 0 ? cy - off - (name ? 10 : 2) : cy + off + 12;
-      const label = svgEl('text', horiz ? { x: cx, y: cy - off - 4, 'text-anchor': 'middle', class: 'bp-label' } : { x: lx, y: ly, 'text-anchor': 'start', class: 'bp-label' });
-      if (horiz || !name) label.textContent = `${name ? `${name} = ` : ''}${value}`;
-      else {
-        const l1 = svgEl('tspan', { x: lx });
-        l1.textContent = name;
-        const l2 = svgEl('tspan', { x: lx, dy: 16, class: 'bp-label-value' });
-        l2.textContent = value;
-        label.append(l1, l2);
-      }
+      const lines = labelLines(key, part, angle);
+      const spot = labelSpot(geo, part, lines, side);
+      const label = svgEl('text', { x: spot.x, y: spot.top + 13, 'text-anchor': spot.anchor, class: 'bp-label' });
+      lines.forEach((t, i) => {
+        const ts = svgEl('tspan', { x: spot.x, dy: i === 0 ? 0 : 16, class: i === 0 ? '' : 'bp-label-value' });
+        ts.textContent = t;
+        label.append(ts);
+      });
       g.append(label);
     }
     return g;
+  };
+
+  const labelLines = (key: EdgeKey, part: Part, angle: number): string[] => {
+    const name = names.get(key);
+    const value = formatQuantity(part.value, UNIT_OF[part.kind]);
+    if (!name) return [value];
+    return angle === 0 ? [`${name} = ${value}`] : [name, value];
+  };
+
+  /**
+   * Feliratok oldala: minden elemnél az az oldal, ahol a felirat a legkevésbé takar (más elemek teste, a már
+   * elhelyezett feliratok, vezetékek, a rajz széle). Így a sűrű rajzon sem csúsznak egymásra a számok.
+   */
+  const labelSides = (): Map<EdgeKey, 1 | -1> => {
+    const entries = Object.entries(board.parts);
+    const geos = new Map(entries.map(([k, p]) => [k, geometry(k, p)]));
+    const bodies = entries.filter(([, p]) => p.kind !== 'W').map(([k]) => ({ key: k, box: geos.get(k)!.body }));
+    // A vezetékek és az elemek kivezetései vékony sávként számítanak (átlósnál a befoglaló négyzet közepe).
+    const wires: { key: EdgeKey; box: Box }[] = entries.map(([k]) => {
+      const g = geos.get(k)!;
+      const pad = g.angle === 0 || g.angle === 90 ? 3 : -CELL * 0.3;
+      return { key: k, box: { x1: Math.min(g.x1, g.x2) - pad, y1: Math.min(g.y1, g.y2) - pad, x2: Math.max(g.x1, g.x2) + pad, y2: Math.max(g.y1, g.y2) + pad } };
+    });
+    const placed: Box[] = [];
+    const out = new Map<EdgeKey, 1 | -1>();
+    for (const [key, part] of entries) {
+      if (part.kind === 'W') continue;
+      const g = geos.get(key)!;
+      const lines = labelLines(key, part, g.angle);
+      const cost = (side: 1 | -1) => {
+        const b = labelSpot(g, part, lines, side).box;
+        let c = 0;
+        for (const o of bodies) if (o.key !== key) c += overlap(b, o.box) * 10;
+        for (const o of placed) c += overlap(b, o) * 10;
+        for (const o of wires) if (o.key !== key) c += overlap(b, o.box);
+        if (b.x1 < 0 || b.y1 < 0 || b.x2 > W || b.y2 > H) c += 5000;
+        // A forrás nyila az átellenes oldalra kerül: ott se takarjon elemet.
+        if (part.kind !== 'R') {
+          const a = labelSpot(g, part, ['→→'], -side as 1 | -1).box;
+          for (const o of bodies) if (o.key !== key) c += overlap(a, o.box) * 5;
+        }
+        return c;
+      };
+      const side: 1 | -1 = cost(1) <= cost(-1) ? 1 : -1;
+      out.set(key, side);
+      placed.push(labelSpot(g, part, lines, side).box);
+      // A forrás nyila is foglal helyet: a később elhelyezett feliratok azt is kerülik.
+      if (part.kind !== 'R') placed.push(labelSpot(g, part, ['→→'], -side as 1 | -1).box);
+    }
+    return out;
   };
 
   const draw = () => {
@@ -150,7 +224,10 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       const [x2, y2] = px(b);
       kids.push(svgEl('line', { x1, y1, x2, y2, class: 'bg-hover' }));
     }
-    for (const [key, part] of Object.entries(board.parts)) kids.push(partSvg(key, part));
+    const sides = labelSides();
+    // Előbb a vezetékek, utána az elemek: a feliratok így mindig felül vannak.
+    const sorted = Object.entries(board.parts).sort(([, p], [, q]) => Number(p.kind !== 'W') - Number(q.kind !== 'W'));
+    for (const [key, part] of sorted) kids.push(partSvg(key, part, sides.get(key) ?? 1));
     // Csomópont-pötty, ahol legalább három szakasz találkozik.
     const degree = new Map<string, number>();
     for (const key of Object.keys(board.parts)) for (const p of edgeEnds(key)) degree.set(p.join(','), (degree.get(p.join(',')) ?? 0) + 1);
@@ -263,7 +340,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
           class: 'builder-help',
           text:
             tool === 'wire'
-              ? 'Vezeték: kattints egy rácsvonalra vagy egy négyzet átlójára, vagy húzd a vonalat pontról pontra. Az értéket a számra kattintva írhatod át.'
+              ? 'Vezeték: kattints egy rácsvonalra vagy egy négyzet átlójára (a kék sáv mutatja, hová kerül), vagy húzd pontról pontra. Az értéket a számra kattintva írhatod át.'
               : tool === 'erase'
                 ? 'Radír: kattints arra az elemre vagy vezetékre, amit törölni szeretnél.'
                 : `${TOOL_NAMES[tool]}: kattints egy rácsvonalra vagy egy négyzet átlójára (keresztbe), vagy húzd oda a gombot az eszköztárról.`,
@@ -381,6 +458,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
 
   // Húzás a rácson: vezeték rajzolása pontról pontra, vagy meglévő elem áthelyezése.
   let wireFrom: [number, number] | null = null;
+  /** Húzás közben került-e le vezeték (ha nem, a lenyomás sima kattintásnak számít). */
+  let wireDrew = false;
   let moving: { key: EdgeKey; moved: boolean; x: number; y: number } | null = null;
 
   svg.addEventListener('pointerdown', (e) => {
@@ -408,6 +487,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     // Rácspontról indulva vezeték húzása; egy elem (vagy vezeték) közepén kijelölés / áthelyezés.
     if (node) {
       wireFrom = node;
+      wireDrew = false;
       return;
     }
     if (hit && board.parts[hit]) moving = { key: hit, moved: false, x: e.clientX, y: e.clientY };
@@ -427,6 +507,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
             board.parts[key] = { kind: 'W', value: 0, dir: 1 };
             clearCrossing(key);
           }
+          wireDrew = true;
           wireFrom = node;
           recompute();
         }
@@ -444,7 +525,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
       }
       return;
     }
-    const edge = tool === 'wire' ? null : nearestEdge(pos);
+    const edge = tool === 'erase' ? null : nearestEdge(pos);
     if (edge !== hoverEdge) {
       hoverEdge = edge;
       draw();
@@ -468,6 +549,13 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
           renderEditor();
         } else draw();
       }
+    }
+    // Rácspont közelében lenyomva, de húzás nélkül felengedve: sima kattintás, mint a többi elemnél
+    // (üres vonalra vezeték kerül, meglévő elem kijelölődik).
+    if (wireFrom && !wireDrew && e.type === 'pointerup') {
+      const edge = nearestEdge(gridPos(e));
+      if (edge && !board.parts[edge]) place(edge, 'W');
+      else if (edge) select(edge === selected ? null : edge);
     }
     wireFrom = null;
   };
@@ -500,7 +588,8 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
     });
     toolBtns.set(t, b);
     b.addEventListener('click', () => setTool(t));
-    if (t === 'R' || t === 'V' || t === 'I') {
+    if (t !== 'erase') {
+      const kind: PartKind = t === 'wire' ? 'W' : t;
       // Húzás az eszköztárról: a gomb képe követi a mutatót, a rácson a legközelebbi vonalra kerül.
       let ghost: HTMLElement | null = null;
       b.addEventListener('pointerdown', (e) => {
@@ -530,7 +619,7 @@ export function createBuilder(viewer: TaskViewer): HTMLElement {
           ghost = null;
           const edge = inside(ev) ? nearestEdge(gridPos(ev)) : null;
           hoverEdge = null;
-          if (edge) place(edge, t);
+          if (edge) place(edge, kind);
           else draw();
         };
         window.addEventListener('pointermove', move);

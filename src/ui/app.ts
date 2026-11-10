@@ -74,7 +74,7 @@ export function startApp(root: HTMLElement): void {
   domainSeg.el.title = 'Egyenáram: Villamosságtan 1 · Váltóáram: Villamosságtan 2 (impedancia, rezgőkörök, bekapcsolás)';
   const modeSeg = segmented<Mode>(
     'Mód',
-    (Object.keys(MODE_NAMES) as Mode[]).map((m) => ({ value: m, label: MODE_NAMES[m] })),
+    (Object.keys(MODE_NAMES) as Mode[]).map((m) => ({ value: m, label: MODE_NAMES[m], ...(m === 'epito' ? { badge: 'Béta' } : {}) })),
     settings.mode,
     (v) => {
       update({ mode: v });
