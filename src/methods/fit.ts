@@ -123,13 +123,20 @@ export function recommendMethod(p: Problem): { method: MethodId; why: string } {
  * olyan alkalmazható módszer, amelyik mindre (többkérdéses feladatnál nem mindegyik módszer ad meg mindent).
  */
 export function prescribedMethod(p: Problem): MethodId {
-  const covers = (m: MethodId) => {
-    const r = solveWith(p, m);
-    if (!r.ok) return false;
-    const got = new Set(r.solution.answers.map((a) => a.questionId));
-    return p.questions.every((q) => q.kind === 'table' || got.has(q.id));
-  };
   const rec = recommendMethod(p).method;
-  if (covers(rec)) return rec;
-  return applicableMethods(p).find(covers) ?? rec;
+  if (methodCovers(p, rec)) return rec;
+  return applicableMethods(p).find((m) => methodCovers(p, m)) ?? rec;
+}
+
+/** A módszer a feladat minden (nem táblázatos) kérdésére választ ad-e. */
+export function methodCovers(p: Problem, m: MethodId): boolean {
+  let r;
+  try {
+    r = solveWith(p, m);
+  } catch {
+    return false;
+  }
+  if (!r.ok) return false;
+  const got = new Set(r.solution.answers.map((a) => a.questionId));
+  return p.questions.every((q) => q.kind === 'table' || got.has(q.id));
 }

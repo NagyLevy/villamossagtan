@@ -5,11 +5,23 @@ import { AC_LEVEL_NAMES, AC_TOPIC_NAMES, generateAcTask, type AcLevel, type AcTo
 import { generateProblem, TOPIC_NAMES, type Problem, type TeacherType, type Topic } from '../generator/generate';
 import { LEVEL_NAMES, type Level } from '../generator/values';
 import { Rng } from '../generator/rng';
+import { methodCovers } from '../methods/fit';
+import type { MethodId } from '../methods/types';
 import type { AnswerField, Domain, Task } from './types';
 
 export type { Task } from './types';
 
 const EXAMPLE: Record<string, string> = { V: '4,5 V', A: '350 mA', Ω: '4,7 kΩ', W: '1,2 W' };
+
+/**
+ * A feladat témakörének neve a felületen. A tanár úr feladattípusai nem külön témakörként jelennek meg, hanem
+ * a tartalmuk szerinti témakörben: a helyettesítő generátoros a „Helyettesítő generátorok”, a többi (hurokáram,
+ * csomóponti potenciál, szuperpozíció) a „Többforrásos hálózatok” alatt.
+ */
+export function topicLabel(p: Problem): string {
+  if (p.topic !== 'tanari') return TOPIC_NAMES[p.topic];
+  return TOPIC_NAMES[p.teacherType === 'thevenin' ? 'thevenin' : 'tobbforras'];
+}
 
 /** Egyenáramú feladat a közös formátumban. */
 export function dcTask(p: Problem): Task {
@@ -18,10 +30,10 @@ export function dcTask(p: Problem): Task {
     domain: 'dc',
     seed: p.seed,
     topic: p.topic,
-    topicName: TOPIC_NAMES[p.topic],
+    topicName: topicLabel(p),
     levelName: LEVEL_NAMES[p.level],
     meta: parts.filter(Boolean).join(' · '),
-    title: p.questions.length === 1 ? p.questions[0]!.text : `${TOPIC_NAMES[p.topic]}: ${p.questions.length} részkérdés`,
+    title: p.questions.length === 1 ? p.questions[0]!.text : `${topicLabel(p)}: ${p.questions.length} részkérdés`,
     circuit: p.circuit,
     dc: p,
     questions: p.questions.map((q) => ({
@@ -117,8 +129,51 @@ export const EXAMS: ExamInfo[] = [
   { kind: 'vegyes', name: 'Vegyes (év végi)', minutes: 60, description: '7 feladat mindkét félév anyagából.' },
 ];
 
-/** A próbavizsga feladatai: ugyanaz a seed mindig ugyanazt a sort adja. */
-export function examTasks(kind: ExamKind, seed: string): Task[] {
+/** A próbavizsgán választható módszerek (egyenáramú sor), a választó sorrendjében. */
+export const EXAM_METHODS: MethodId[] = ['redukcio', 'kirchhoff', 'hurokaram', 'csomoponti', 'szuperpozicio', 'thevenin', 'csillag-delta'];
+
+/**
+ * Egyenáramú sor egyetlen, előre választott módszerre: 5 feladat, mindegyik megoldható vele (a módszer a feladat
+ * minden kérdésére választ ad). A feladattípusok a módszerhez illő témakörökből jönnek, váltakozva.
+ */
+function methodExam(seed: string, method: MethodId): Task[] {
+  const dc = (topic: Topic, level: Level, extra: Partial<DcSpec> = {}) => (sd: string): DcSpec => ({ domain: 'dc', topic, level, seed: sd, ...extra });
+  const teacher = (teacherType: TeacherType) => dc('tanari', 'kozepes', { teacherType });
+  const sources: Record<MethodId, ((sd: string) => DcSpec)[]> = {
+    redukcio: [dc('eredo', 'kozepes'), dc('oszto', 'kozepes'), dc('oszto', 'nehez', { askPower: 'R' }), dc('oszto', 'nehez'), dc('eredo', 'nehez')],
+    kirchhoff: [dc('kirchhoff', 'kozepes'), dc('halozat', 'konnyu'), dc('kirchhoff', 'nehez'), dc('halozat', 'kozepes'), dc('kirchhoff', 'konnyu')],
+    // A nehéz többforrásos feladat többféle kérdést tesz fel (egy módszer nem ad mindre választ), ezért itt
+    // a közepes szint, a tanár úr típusai és a nagy (ZH-méretű) hálózat váltakozik.
+    hurokaram: [teacher('hurokaram'), dc('tobbforras', 'kozepes'), teacher('hurokaram'), dc('zh', 'zh'), dc('tobbforras', 'kozepes')],
+    csomoponti: [teacher('csomoponti'), dc('tobbforras', 'kozepes'), teacher('csomoponti'), dc('zh', 'zh'), dc('tobbforras', 'kozepes')],
+    szuperpozicio: [teacher('szuperpozicio'), dc('zh', 'zh'), teacher('szuperpozicio'), dc('zh', 'zh'), teacher('szuperpozicio')],
+    thevenin: [teacher('thevenin'), dc('thevenin', 'kozepes'), dc('thevenin', 'kozepes'), teacher('thevenin'), dc('thevenin', 'kozepes')],
+    'csillag-delta': [dc('csillag-delta', 'kozepes', { starDelta: true }), dc('csillag-delta', 'konnyu', { starDelta: true }), dc('csillag-delta', 'nehez', { starDelta: true }), dc('csillag-delta', 'kozepes', { starDelta: true }), dc('csillag-delta', 'nehez', { starDelta: true })],
+  };
+  return sources[method].map((spec, i) => {
+    let fallback: Task | null = null;
+    // Addig keresünk seedet, amíg a módszer minden kérdésre választ nem ad (determinisztikus: a seed a sorszámból jön).
+    for (let a = 0; a < 80; a++) {
+      let task: Task;
+      try {
+        task = makeTask(spec(`${seed}-${i}${a ? `-${a}` : ''}`));
+      } catch {
+        continue;
+      }
+      if (methodCovers(task.dc!, method)) return task;
+      fallback ??= task;
+    }
+    if (!fallback) throw new Error('Ehhez a módszerhez most nem sikerült feladatsort összeállítani.');
+    return fallback;
+  });
+}
+
+/**
+ * A próbavizsga feladatai. `method`: az egyenáramú sorban előre választott módszer (minden feladat azzal oldható
+ * meg); nélküle véletlen típusok jönnek, feladatonként a hozzájuk illő módszerrel.
+ */
+export function examTasks(kind: ExamKind, seed: string, method?: MethodId): Task[] {
+  if (kind === 'dc' && method) return methodExam(seed, method);
   const rng = new Rng(`vizsga|${kind}|${seed}`);
   const s = (i: number) => `${seed}-${i}`;
   const dc = (i: number, topic: Topic, level: Level, starDelta = false): Task => makeTask({ domain: 'dc', topic, level, seed: s(i), starDelta });

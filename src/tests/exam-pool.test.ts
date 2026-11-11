@@ -31,3 +31,29 @@ describe('egyenáramú próbavizsga: véletlen sor a közös készletből', () =
     for (const e of EXAMS) expect(`${e.name} ${e.description}`).not.toMatch(/szinuszos|tanári formátum/i);
   });
 });
+
+describe('egyenáramú próbavizsga előre választott módszerrel', () => {
+  it('minden módszerre 5 feladat jön, és a módszer mindegyik minden kérdésére választ ad', async () => {
+    const { EXAM_METHODS } = await import('../tasks');
+    const { methodCovers } = await import('../methods/fit');
+    for (const m of EXAM_METHODS)
+      for (let i = 0; i < 6; i++) {
+        const ts = examTasks('dc', `EM${i}`, m);
+        expect(ts).toHaveLength(5);
+        for (const t of ts) expect(methodCovers(t.dc!, m), `${m} EM${i} ${t.dc!.topic}`).toBe(true);
+        // Ugyanaz a seed ugyanazt a sort adja.
+        expect(examTasks('dc', `EM${i}`, m).map((t) => t.seed)).toEqual(ts.map((t) => t.seed));
+      }
+  });
+});
+
+describe('a tanár úr feladattípusai nem külön témakör', () => {
+  it('a vizsgafeladatok témaköre a tartalmuk szerinti (többforrásos, helyettesítő generátor)', () => {
+    const names = new Set<string>();
+    for (let i = 0; i < 30; i++) for (const t of examTasks('dc', `TN${i}`)) names.add(t.topicName);
+    for (const m of ['hurokaram', 'csomoponti', 'szuperpozicio', 'thevenin'] as const) for (const t of examTasks('dc', 'TN', m)) names.add(t.topicName);
+    expect([...names].some((n) => /tanár/i.test(n))).toBe(false);
+    expect(names.has('Többforrásos hálózatok')).toBe(true);
+    expect([...names].some((n) => n.startsWith('Helyettesítő generátorok'))).toBe(true);
+  });
+});
