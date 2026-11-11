@@ -408,28 +408,21 @@ export function startApp(root: HTMLElement): void {
       // A beírt válaszok megmaradnak (a nézet a feladat saját táblájába ír).
       current = i;
       const t = tasks[i]!;
+      // Lépkedés a feladatok között a feladat fölött: előző / következő, az utolsónál beadás (vagy az összesítés).
+      const last = i === tasks.length - 1;
       const nav = h(
         'div',
         { class: 'exam-nav' },
         h('span', { class: 'exam-count', text: `${i + 1}. feladat / ${tasks.length}` }),
         h('span', { class: 'spacer' }),
-        i > 0 ? button('← Előző', () => open(i - 1), 'quiet') : null,
-        i < tasks.length - 1 ? button('Következő →', () => open(i + 1), 'secondary') : null,
-      );
-      // A feladat alatt is lehet lépni: előző / következő feladat, az utolsónál beadás (vagy az összesítés).
-      const last = i === tasks.length - 1;
-      const foot = h(
-        'div',
-        { class: 'exam-foot' },
         i > 0 ? button('Előző feladat', () => open(i - 1), 'secondary') : null,
-        h('span', { class: 'spacer' }),
         !last
           ? button('Következő feladat', () => open(i + 1), 'primary')
           : submitted
             ? button('Összesítés', () => showSummary(), 'primary')
             : button('Beadás', () => submitBtn.click(), 'primary'),
       );
-      body.replaceChildren(nav, viewer.el, foot);
+      body.replaceChildren(nav, viewer.el);
       // Egyenáramú feladatnál megadjuk a módszert is, amivel számolni kell (a megoldás is ezzel készül).
       const method = t.dc ? (chosen ?? bestMethod(t)) : undefined;
       const banner = method ? h('p', { class: 'exam-method' }, h('span', { text: 'Ezzel a módszerrel számold: ' }), h('strong', { text: methodName(t, method) })) : null;

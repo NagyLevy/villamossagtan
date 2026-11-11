@@ -159,7 +159,7 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   sor a tesztek miatt megmaradt). Beadás után összesítés és feladatonkénti megoldás. Pontrendszer, ranglista nincs.
   Az egyenáramú sor indítása előtt **megoldási módszer választható** (`examMethod`, alapból „Véletlen”): választott
   módszernél mind az 5 feladat azzal oldható meg (`methodExam`, `methodCovers`), és az az előírt módszer. Vizsga
-  közben a feladat alatt „Előző feladat” / „Következő feladat” gomb áll (az utolsónál „Beadás”), nem csak a felső számok.
+  közben a feladat fölött, jobbra „Előző feladat” / „Következő feladat” gomb áll (az utolsónál „Beadás”), a felső számok mellett.
 - **A tanár úr feladattípusai nem külön témakör:** a feladatai a „Többforrásos hálózatok” (hurokáram, csomóponti,
   szuperpozíció) és a „Helyettesítő generátorok” (Thevenin) témakörbe vannak keverve (gyakorlásnál kb. a feladatok
   harmada, `TEACHER_MIX`, `app.ts`), és a felületen mindenhol ennek a témakörnek a nevét viselik (`topicLabel`, `tasks/index.ts`).
