@@ -33,6 +33,8 @@ export interface Settings {
   timedMinutes: number;
   dailyLevel: DailyLevel;
   examKind: ExamKind;
+  /** Próbavizsga (egyenáram): az előre választott megoldási módszer, vagy véletlen (feladatonként a hozzá illő). */
+  examMethod: MethodId | 'veletlen';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -51,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   timedMinutes: 10,
   dailyLevel: 'kozepes',
   examKind: 'dc',
+  examMethod: 'veletlen',
 };
 
 const KEY = 'villamossagtan.settings.v2';

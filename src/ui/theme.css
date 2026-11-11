@@ -1679,3 +1679,19 @@ html.lite .toast {
     inset 0 0 0 1px var(--hair-2),
     var(--shadow-float);
 }
+
+/* Próbavizsga: lépegetés a feladat alatt, és megjegyzés az indító kártyán. */
+.exam-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--hair);
+}
+
+.gate-note {
+  margin: -6px 0 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}

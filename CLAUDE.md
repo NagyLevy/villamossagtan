@@ -157,6 +157,12 @@ npm run build    # típusellenőrzés (tsc) + build a dist/ mappába
   és a tanári 1. ZH – közös készletéből; minden feladat fölött ott az előírt módszer, `prescribedMethod`,
   `fit.ts`), Váltóáram (10), Vegyes (7). Külön „tanári formátum” nincs a választóban (az `examTasks('zh1')`
   sor a tesztek miatt megmaradt). Beadás után összesítés és feladatonkénti megoldás. Pontrendszer, ranglista nincs.
+  Az egyenáramú sor indítása előtt **megoldási módszer választható** (`examMethod`, alapból „Véletlen”): választott
+  módszernél mind az 5 feladat azzal oldható meg (`methodExam`, `methodCovers`), és az az előírt módszer. Vizsga
+  közben a feladat alatt „Előző feladat” / „Következő feladat” gomb áll (az utolsónál „Beadás”), nem csak a felső számok.
+- **A tanár úr feladattípusai nem külön témakör:** a feladatai a „Többforrásos hálózatok” (hurokáram, csomóponti,
+  szuperpozíció) és a „Helyettesítő generátorok” (Thevenin) témakörbe vannak keverve (gyakorlásnál kb. a feladatok
+  harmada, `TEACHER_MIX`, `app.ts`), és a felületen mindenhol ennek a témakörnek a nevét viselik (`topicLabel`, `tasks/index.ts`).
 - **Áramkör-építő** (a fülek között elválasztó vonal után, „Béta” jelvénnyel): saját áramkör rácson (`src/builder/model.ts` a modell, `src/ui/builder.ts` a felület): az elemek
   (ellenállás, feszültség- és áramforrás) az eszköztárról a rácsvonalakra húzhatók, a vezeték pontról pontra húzva
   rajzolható, vagy üres rácsvonalra kattintva kerül oda; minden elem és vezeték átlósan (egy négyzet átlójára,

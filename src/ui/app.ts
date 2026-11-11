@@ -2,7 +2,7 @@
 // napi feladatok), beállítások panel, és a módok saját nézetei. Egy feladat megjelenítése a
 // TaskViewer dolga; itt csak az dől el, hogy melyik feladat, milyen módban.
 
-import { generateProblem, type Topic } from '../generator/generate';
+import { generateProblem, type TeacherType, type Topic } from '../generator/generate';
 import { randomSeed } from '../generator/rng';
 import type { Level } from '../generator/values';
 import type { AcLevel, AcTopic } from '../ac/problems';
@@ -11,7 +11,7 @@ import { methodFit, prescribedMethod } from '../methods/fit';
 import { dailyProblem } from '../daily/problem';
 import { DAILY_LEVELS, dailyChallenge, dayKey, msUntilNext, type DailyLevel } from '../daily/schedule';
 import { isDone, loadProgress, markDone, streak } from '../daily/progress';
-import { AC_LEVELS, AC_TOPICS, DC_LEVELS, DC_TOPICS, dcTask, AC_EXAMS, EXAMS, examTasks, makeTask, type ExamKind } from '../tasks';
+import { AC_LEVELS, AC_TOPICS, DC_LEVELS, DC_TOPICS, dcTask, AC_EXAMS, EXAM_METHODS, EXAMS, examTasks, makeTask, type ExamKind } from '../tasks';
 import type { Domain, Task } from '../tasks/types';
 import { button, iconButton, segmented, select, slider, toast, toggle } from './components';
 import { h, icon, ICONS } from './dom';
@@ -28,6 +28,9 @@ import { formatNumber } from '../units';
  */
 export const AC_ENABLED = false;
 const SOON = 'Hamarosan';
+
+/** Melyik témakörbe melyik tanári feladattípus keveredik. */
+const TEACHER_MIX: Partial<Record<Topic, TeacherType[]>> = { tobbforras: ['hurokaram', 'csomoponti', 'szuperpozicio'], thevenin: ['thevenin'] };
 
 const MODE_NAMES: Record<Mode, string> = { gyakorlas: 'Gyakorlás', idore: 'Időre', vizsga: 'Próbavizsga', napi: 'Napi', epito: 'Áramkör-építő' };
 
@@ -165,6 +168,17 @@ export function startApp(root: HTMLElement): void {
     const method: MethodId = settings.dcTopic === 'halozat' ? 'kirchhoff' : settings.dcTopic === 'csillag-delta' ? 'csillag-delta' : settings.method === 'csillag-delta' && !settings.starDelta ? 'redukcio' : settings.method;
     // Bekapcsolt csillag-deltánál sem minden feladat hidas: csak kb. minden harmadik.
     const sd = sdOn(settings.dcTopic);
+    // A tanár úr feladattípusai nem külön témakör: a Többforrásos hálózatok és a Helyettesítő generátorok
+    // feladatai közé keverednek (kb. minden harmadik feladat), a választott módszerhez illő típussal.
+    const mix = TEACHER_MIX[settings.dcTopic];
+    if (mix && !sd && Math.random() < 0.35) {
+      const type = mix.includes(method as TeacherType) ? (method as TeacherType) : mix[Math.floor(Math.random() * mix.length)]!;
+      try {
+        return makeTask({ domain: 'dc', topic: 'tanari', level: 'kozepes', seed, teacherType: type });
+      } catch {
+        // Ha ez a seed nem ad érvényes feladatot, marad a témakör szokásos feladata.
+      }
+    }
     const found = findFor(method, settings.dcTopic, level, sd);
     return dcTask(generateProblem({ seed: found ?? seed, topic: settings.dcTopic, level, starDelta: sd, starDeltaMode: settings.starDeltaMode }));
   };
@@ -316,6 +330,28 @@ export function startApp(root: HTMLElement): void {
         h('span', { class: 'exam-desc', text: e.description }),
       );
     });
+    // Megoldási módszer: előre választható (akkor minden feladat azzal oldható meg), vagy véletlen.
+    const names = new Map(methodList(true).map((m) => [m.id, m.label]));
+    const dcExam = settings.examKind === 'dc';
+    const methodSel = select<string>(
+      'Megoldási módszer',
+      [{ value: 'veletlen', label: 'Véletlen (feladatonként más)' }, ...EXAM_METHODS.map((m) => ({ value: m, label: names.get(m) ?? m }))],
+      dcExam ? settings.examMethod : 'veletlen',
+      (v) => {
+        update({ examMethod: v as MethodId | 'veletlen' });
+        showExamStart();
+      },
+    );
+    methodSel.setDisabled(!dcExam);
+    const methodField = h('label', { class: 'picker-field' }, h('span', { text: 'Megoldási módszer' }), methodSel.el);
+    const methodHint = h('p', {
+      class: 'gate-note',
+      text: !dcExam
+        ? 'A módszer az egyenáramú sorban választható.'
+        : settings.examMethod === 'veletlen'
+          ? 'Véletlen: vegyes feladattípusok jönnek, és minden feladat fölött ott áll, melyik módszerrel számold.'
+          : `Mind az 5 feladat olyan lesz, amit ezzel a módszerrel kell megoldani: ${names.get(settings.examMethod) ?? ''}.`,
+    });
     main.replaceChildren(
       h(
         'section',
@@ -323,7 +359,8 @@ export function startApp(root: HTMLElement): void {
         h('h2', { class: 'gate-title', text: 'Próbavizsga' }),
         h('p', { class: 'gate-info', text: 'Egy teljes feladatsor a ZH-k és vizsgák mintájára, egy közös órával. A feladatok között szabadon ugrálhatsz; a megoldások a beadás után látszanak, feladatonként végignézhetők.' }),
         h('div', { class: 'exam-cards' }, ...cards),
-        h('div', { class: 'gate-row' }, button('Próbavizsga indítása', () => runExam(settings.examKind), 'primary')),
+        h('div', { class: 'gate-row' }, methodField, button('Próbavizsga indítása', () => runExam(settings.examKind), 'primary')),
+        methodHint,
       ),
     );
   };
@@ -331,9 +368,11 @@ export function startApp(root: HTMLElement): void {
   const runExam = (kind: ExamKind) => {
     stopTimer();
     const info = EXAMS.find((e) => e.kind === kind)!;
+    // Az előre választott módszer (csak az egyenáramú sorban); nélküle feladatonként a hozzá illő módszer.
+    const chosen = kind === 'dc' && settings.examMethod !== 'veletlen' ? settings.examMethod : undefined;
     let tasks: Task[];
     try {
-      tasks = examTasks(kind, randomSeed());
+      tasks = examTasks(kind, randomSeed(), chosen);
     } catch (e) {
       toast(String(e instanceof Error ? e.message : e));
       return;
@@ -377,9 +416,22 @@ export function startApp(root: HTMLElement): void {
         i > 0 ? button('← Előző', () => open(i - 1), 'quiet') : null,
         i < tasks.length - 1 ? button('Következő →', () => open(i + 1), 'secondary') : null,
       );
-      body.replaceChildren(nav, viewer.el);
+      // A feladat alatt is lehet lépni: előző / következő feladat, az utolsónál beadás (vagy az összesítés).
+      const last = i === tasks.length - 1;
+      const foot = h(
+        'div',
+        { class: 'exam-foot' },
+        i > 0 ? button('Előző feladat', () => open(i - 1), 'secondary') : null,
+        h('span', { class: 'spacer' }),
+        !last
+          ? button('Következő feladat', () => open(i + 1), 'primary')
+          : submitted
+            ? button('Összesítés', () => showSummary(), 'primary')
+            : button('Beadás', () => submitBtn.click(), 'primary'),
+      );
+      body.replaceChildren(nav, viewer.el, foot);
       // Egyenáramú feladatnál megadjuk a módszert is, amivel számolni kell (a megoldás is ezzel készül).
-      const method = t.dc ? bestMethod(t) : undefined;
+      const method = t.dc ? (chosen ?? bestMethod(t)) : undefined;
       const banner = method ? h('p', { class: 'exam-method' }, h('span', { text: 'Ezzel a módszerrel számold: ' }), h('strong', { text: methodName(t, method) })) : null;
       viewer.load(t, { mode: 'test', method, answers: answers[i], submitted, banner });
       renderTabs();
